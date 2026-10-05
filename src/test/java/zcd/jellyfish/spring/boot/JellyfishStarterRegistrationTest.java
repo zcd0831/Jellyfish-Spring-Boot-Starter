@@ -9,6 +9,8 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import zcd.jellyfish.infra.session.SessionManager;
+import zcd.jellyfish.spring.boot.user.IdleSessionReaper;
+import zcd.jellyfish.spring.boot.user.JellyfishUserFacade;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -38,7 +40,7 @@ class JellyfishStarterRegistrationTest {
     Path pluginsRoot;
 
     @Test
-    @DisplayName("SpringApplication 能通过 spring.factories 自动装配出内核 Bean")
+    @DisplayName("SpringApplication 能通过 spring.factories 自动装配出内核 Bean 与多用户护栏")
     void spring_application_should_register_starter_via_spring_factories() {
         // Given：接入方最朴素的用法——一个空的 @Configuration，加一份 application.yml
         SpringApplication application = new SpringApplication(StubConfig.class);
@@ -54,6 +56,11 @@ class JellyfishStarterRegistrationTest {
             assertEquals(1, context.getBeanNamesForType(SessionManager.class).length);
             assertEquals(1, context.getBeanNamesForType(JellyfishLifecycle.class).length);
             assertNotNull(context.getBean(SessionManager.class));
+            // 多用户护栏是 spring.factories 里的<b>第二条</b>注册，必须单独断言：
+            // 只验内核那一半的话，第二个类名写错、或 @AutoConfigureAfter 漏了导致条件求值顺序不对，
+            // 这条用例都不会红
+            assertEquals(1, context.getBeanNamesForType(JellyfishUserFacade.class).length);
+            assertEquals(1, context.getBeanNamesForType(IdleSessionReaper.class).length);
         }
     }
 

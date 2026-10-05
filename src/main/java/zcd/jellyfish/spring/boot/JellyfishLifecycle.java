@@ -51,8 +51,11 @@ public class JellyfishLifecycle implements SmartLifecycle {
      * <p>
      * 副作用是内核会在其它 {@code SmartLifecycle} 之前启动。这是可接受的：{@code start()} 发生在所有单例
      * 都已实例化之后，而「先就绪、后被用到」正是依赖它的 Bean 想要的顺序。
+     * <p>
+     * <b>它是 public 的</b>：本 starter 里还有别的生命周期组件需要「排在内核之后、但在它关闭之前」
+     * （例如闲置会话回收用 {@code PHASE + 1}），靠同一个常量推导比各自再写一个魔数可靠。
      */
-    private static final int PHASE = Integer.MIN_VALUE;
+    public static final int PHASE = Integer.MIN_VALUE;
 
     /** 装配好的内核对象图。 */
     private final JellyfishRuntime runtime;

@@ -84,54 +84,102 @@ jellyfish:
 
 ## 用
 
-注入门面即可，20 个内核入口都注册成了 Bean：
+**业务侧只注入一个东西：`JellyfishUserFacade`**。它的每个方法都以 `userId` 开头，内部做归属校验与配额控制。
 
 ```java
-@Service
-public class ChatService {
+@RestController
+public class ChatController {
 
-    private final SessionManager sessions;
-    private final ConversationService conversation;
-    private final ShellStreams streams;
+    private final JellyfishUserFacade jellyfish;
 
-    public ChatService(SessionManager sessions, ConversationService conversation, ShellStreams streams) {
-        this.sessions = sessions;
-        this.conversation = conversation;
-        this.streams = streams;
+    public ChatController(JellyfishUserFacade jellyfish) {
+        this.jellyfish = jellyfish;
     }
 
-    public String createSession() {
-        // 建会话用 create(...)，不要用 createDefault()——后者会改写进程级「当前会话」指针
-        return sessions.create(null, null, null).getSessionId();
+    /** 建会话。 */
+    @PostMapping("/sessions")
+    public String create(@RequestParam String userId) {
+        return jellyfish.createSession(userId);
+    }
+
+    /** 对话。SSE 由你自己写，starter 只给你内核事件。 */
+    @GetMapping(value = "/sessions/{sid}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chat(@RequestParam String userId, @PathVariable String sid,
+                           @RequestParam String message) {
+        SseEmitter emitter = new SseEmitter(0L);   // 不超时：回合可能持续几分钟
+        jellyfish.chat(userId, sid, message, event -> {   // 注意：这个回调在内核线程上
+            emitter.send(toFrame(event));
+            if (event.isTerminal()) {
+                emitter.complete();
+            }
+        });
+        return emitter;
+    }
+
+    /** 裁决审批。 */
+    @PostMapping("/sessions/{sid}/approvals/{rid}")
+    public void approve(@RequestParam String userId, @PathVariable String sid,
+                        @PathVariable String rid, @RequestParam boolean ok) {
+        if (!jellyfish.approve(userId, sid, rid, ok)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "没有这条待审批项");
+        }
     }
 }
 ```
 
-### 两条必须遵守的纪律
+方法一览：`createSession` / `listSessions` / `snapshot` / `closeSession` / `deleteSession` / `chat` /
+`cancel` / `isTurnRunning` / `pendingApprovals` / `approve` / `executeCommand`。
 
-1. **一律按 sessionId 寻址，永不调用 `switchTo` / `createDefault`**。
-   「当前会话」是进程级单指针，多用户下它会让一个用户的会话变成别人的。
-2. **不要把 `SessionManager.all()` 直接暴露给业务侧**。
-   它返回本进程**全部**会话——内核没有「用户」这一维（`Session` 上没有 owner 字段），
-   谁是谁的会话必须由接入方自己记账。
+### 四条必须遵守的纪律
 
-## 与多用户有关的话（重要）
+1. **交互一律走 `JellyfishUserFacade`，不要直接用内核 Bean。** 内核 Bean（`SessionManager`、
+   `CommandManager`、`ApprovalChannel`…）**没有归属校验**，绕过门面就是绕过全部护栏。
+2. **不要调 `switchTo` / `createDefault`。** 那是进程级的「当前会话」指针，多用户下会让一个用户的
+   会话变成所有人的。门面内部一律用 `create(agentId, provider, model)`。
+3. **不要调 `/new`、`/resume`、`/delete`、`/session`、`/reload`。** 门面的 `executeCommand` 已经拦住了
+   它们（可配，见下）；直接调 `CommandManager` 就绕过了闸门。理由见
+   `CommandNotAllowedException` 的 javadoc。
+4. **`chat` 的 listener 在内核线程上被调用**（`react` / `llm-stream` / 工具输出泵，后两者会并发）：
+   必须快且线程安全。写 SSE 这类 I/O 建议自己缓冲或转投线程池；listener 抛出的异常会被记日志后吞掉，
+   不会影响内核的事件派发。
 
-内核是为「**本地单用户、多会话**」设计的，它的 HTTP 外壳也是（默认只绑回环、`GET /sessions` 返回全量会话）。
-接进多用户服务时，下面这些**目前在内核里没有对应能力**，需要接入方自己兜：
+### 配置
 
-| 缺什么 | 现状 |
-| --- | --- |
-| 会话归属 | `Session` 无 owner 字段；`all()` 是全量的 → 自己维护 `userId → sessionId` 并校验 |
-| 每用户配额 | 全进程共享 `react` 线程池（8 线程 + 128 队列）、子代理并发许可、压缩 2 线程 → 一个用户能占满 |
-| 会话回收 | 内核无 TTL、无淘汰，消息全量驻留内存 → 自己起定时任务 `close()` 闲置会话 |
-| 按用户不同权限 | 策略按 `agentId` 全局共享 → 用「每角色一个 agentId」表达 |
+```yaml
+jellyfish:
+  user:
+    enabled: true                 # 关掉则只装配内核，不提供任何护栏入口
+    max-inflight-turns-per-user: 2    # <= 0 表示不限
+    max-sessions-per-user: 20         # <= 0 表示不限
+    reaper-enabled: true
+    idle-timeout: 30m                 # 多久没用算「可以回收了」
+    sweep-interval: 5m
+    denied-commands: [ new, resume, delete, rm, session, sessions, reload ]
+    session-required-commands: [ model, agent, a ]
+```
 
-接入方**自己实现**：HTTP 接口、鉴权、会话归属存储、会话持久化（写插件或自己落库）。
+## 多用户护栏（本 starter 的主要价值）
 
-**在第一版护栏（本仓库后续版本）落地之前**，不要把 `CommandManager` 的原始入口直接暴露给业务侧
-（`/new` 与 `/resume` 会改写进程级指针），也不要在多租户进程里装 `shell` / `mcp` / 脚本桥接插件
-（无沙箱、可起任意子进程、无并发上限）。
+内核是为「**本地单用户、多会话**」设计的，它的 HTTP 外壳也是（默认只绑回环、`GET /sessions`
+返回全量会话）。它**没有「用户」这一维**——`Session` 上没有 owner 字段。下面六件事内核都不做，
+由本 starter 补齐：
+
+| 护栏 | 内核的缺口 | 本 starter 的做法 |
+| --- | --- | --- |
+| **会话归属** | 无 owner 字段；`all()` 是全量的 | `SessionOwnerStore`（SPI，默认内存实现）+ 每个入口先校验；「不存在」与「不属于你」对外是**同一个**答复，避免用错误信息枚举会话 id |
+| **每用户并发配额** | `react` 池 8 线程 + 128 队列是**全进程**共享，一个用户能占满 | 每用户信号量，占不到立刻拒绝（不排队，否则连容器线程一起堵） |
+| **每用户会话数上限** | 会话表只增不减、无上限 | 建会话时检查；「查数 + 建 + 绑定」在同一把锁里完成 |
+| **闲置回收** | 无 TTL、无淘汰，消息全量驻留内存 | 定时 `close()`；**跳过有在途回合的会话**（长调用不刷新时间戳，只看时间会误杀） |
+| **审批归属** | `resolve` 只校验「是不是它自己会话的头槽位」，**不校验调用方说的会话对不对**——拿着「我的会话 + 别人的 requestId」就能批准别人的工具调用 | 网关额外要求 requestId 属于本会话且是头槽位 |
+| **命令入口** | `/new` `/resume` 改进程级指针；`/delete <别人的 id>` 的参数不受归属保护；`/session` 列出全进程会话 | 命令闸门（可配名单） |
+
+### 会话持久化与归属必须一起持久化
+
+默认的 `InMemorySessionOwnerStore` 与会话同生命周期（内核的会话默认也在内存里）。
+**一旦你给会话加了持久化（自己写插件或换存储），归属也必须一起持久化**——
+否则重启后会话还在、归属没了，那些会话就变成谁也访问不到的孤儿。
+
+替换方式：自己实现 `SessionOwnerStore` 并注册成 Bean，默认实现会自动让位。
 
 ## Jackson 版本
 
@@ -153,9 +201,21 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 | 期 | 内容 | 状态 |
 | --- | --- | --- |
 | P1 | 装配 + 生命周期 + 门面 Bean + yml 配置 + 装配契约测试 | ✅ 已落地 |
-| P2 | 多用户护栏（会话归属、配额、闲置回收、越权校验、审批网关） | 未开始 |
+| P2 | 多用户护栏（会话归属、并发配额、会话数上限、闲置回收、审批网关、命令闸门） | ✅ 已落地 |
 | P3 | 插件接入（外部目录 + 自研插件） | 未开始 |
 | P4 | 内嵌插件 + 示例工程 | 未开始 |
+
+**不做的**：HTTP 接口（归接入方）；同进程多套内核。
+
+### 仍未覆盖的（P2 之后）
+
+- **按用户不同权限**：内核的策略按 `agentId` 全局共享，做不到「同一个 agent 对不同用户不同权限」。
+  目前的表达方式是「每角色一个 `agentId`」。
+- **审批队列深度与公平性**：内核每会话队列上限 8 条，第 9 条起直接按拒绝处理；
+  且只有头槽位可见（`pendingApprovals` 给的是本会话整条队列，这是 P0 在内核侧补的读取面）。
+- **不在多租户进程里装高危插件**：`shell`（无沙箱、可起任意子进程、无并发上限）、
+  `mcp`（fork 外部进程）、`python` / `node` 桥接（要解释器、每脚本一个进程）。
+  这些插件的隔离不在本 starter 的范围内。
 
 ## License
 

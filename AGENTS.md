@@ -36,13 +36,25 @@ mvn -q package -DskipTests
 
 ```
 src/main/java/zcd/jellyfish/spring/boot/
-├── JellyfishAutoConfiguration.java      # 入口：条件装配 + 把下面几个 @Configuration 引进来
+├── JellyfishAutoConfiguration.java      # 内核入口：条件装配 + 把下面几个 @Configuration 引进来
 ├── JellyfishProperties.java             # @ConfigurationProperties("jellyfish")：只描述路径与开关
 ├── JellyfishRuntimeConfiguration.java   # @Bean AppConfig + @Bean JellyfishRuntime（装配根）
 ├── JellyfishFacadeConfiguration.java    # 把 JellyfishRuntime 的 20 个门面各注册成一个 @Bean
-└── JellyfishLifecycle.java              # SmartLifecycle：写 RuntimeInfo → bootstrap / shutdown
+├── JellyfishLifecycle.java              # SmartLifecycle：写 RuntimeInfo → bootstrap / shutdown
+└── user/                                # 多用户护栏（内核没有「用户」，全靠这一层）
+    ├── JellyfishUserAutoConfiguration.java  # 护栏入口：@AutoConfigureAfter 内核配置
+    ├── JellyfishUserProperties.java         # @ConfigurationProperties("jellyfish.user")
+    ├── JellyfishUserFacade.java             # ★ 业务侧唯一入口，每个方法以 userId 开头
+    ├── SessionOwnerStore.java               # SPI：会话归属
+    ├── InMemorySessionOwnerStore.java        # 默认实现（与会话同生命周期）
+    ├── SessionSummary.java                  # 列表页用的轻量投影（不含消息正文）
+    ├── UserQuotaGuard.java                  # 每用户并发回合 + 会话数配额
+    ├── ApprovalGateway.java                 # 审批：归属校验 + 只裁决本会话头槽位
+    ├── CommandGate.java                     # 命令闸门：拒绝会碰进程级状态/别人会话的命令
+    ├── IdleSessionReaper.java               # 闲置回收（SmartLifecycle，phase 比内核大 1）
+    └── *Exception.java                      # 越权 / 超配额 / 命令被拒
 
-src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册
+src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册（两个类都在这里）
 ```
 
 ## 约定（与内核 / 插件仓库一致的部分）
@@ -71,12 +83,49 @@ Dagger 生成的 `DaggerJellyfishComponent` 与纯 Java 的 `JellyfishAssembler`
 **不要把 `DaggerJellyfishComponent` 引进来**：它会拖进 Dagger 的运行期依赖，并使内核加一个绑定就需要
 starter 跟着改。装配知识只写一份（在 `jellyfish-di` 里），这里只调用它。
 
-### 门面 Bean 不做 `@ConditionalOnMissingBean`
+### 门面 Bean 不做 `@ConditionalOnMissingBean`——但 `SessionOwnerStore` 是唯一的例外
 
 `JellyfishFacadeConfiguration` 里那 20 个 `@Bean` 刻意**不允许被覆盖**。它们是同一张对象图上的视图，
 让接入方「再注册一个 `ModelManager`」等于在同一个 JVM 里造出第二套内核状态——
 而坏掉的方式是静默的（配置刷了一份、另一份永远是空的）。需要不同行为时应当用内核的扩展点（插件），
 不是在 Spring 容器里替换内核组件。
+
+**例外是 `SessionOwnerStore`**（`@ConditionalOnMissingBean`）：它是一条 SPI，不是内核组件的视图。
+归属存在内存还是关系库，只有接入方知道，因此必须可替换。加新的 `@ConditionalOnMissingBean` 之前，
+先问「这是内核组件的第二个视图，还是一条 SPI」。
+
+### 审批网关必须自己校验 requestId 属于本会话
+
+内核的 `ApprovalChannel.resolve(id, approved)` 只校验「这条请求是不是它**自己那个会话**的头槽位」，
+**不校验调用方说的会话 id 对不对**。因此「把我的 sessionId 配上别人的 requestId」递进去，
+内核会照办——等于任何人都能批准或拒绝别人的工具调用。
+
+所以 `ApprovalGateway.approve` 在转交之前先取本会话的队列、要求 `requestId` 就是**第一条**。
+少了这一步判断就是一个真实的越权漏洞，`ApprovalGatewayTest` 有一条用例专门钉住它。
+
+### 回收器的两道判断，以及两个下限为什么不同
+
+`IdleSessionReaper.shouldReap` 必须同时满足「有归属者」与「没有在途回合」：
+
+- **跳过有在途回合的会话**：闲置判据是「最后一次变更距今多久」，而一次长 LLM 调用在第一条新消息落库
+  之前**不刷新这个时间戳**。只看时间戳会把正在跑的会话关掉，现场表现是「模型还在回答，会话却没了」。
+- **跳过没有归属者的会话**：那是别人直接用内核 API 建的，关掉它超出了本层的职责。
+
+两个下限刻意不同：**扫描间隔**钳到 ≥ 1 秒（会造成忙等的是「多久醒一次」），而**闲置门槛**只钳到 ≥ 1 毫秒
+（门槛小只是关得早，代价可控；把门槛也钳到 1 秒会让「按秒试跑」变得不可能）。
+
+### 建会话的锁用散列槽位，不是每用户一把
+
+`UserQuotaGuard.requireSessionSlot` 的「查数」与随后的「建 + 绑定」必须在同一把锁里，
+否则同一用户的两个并发请求会各自看到「还差一个」然后各建一个，配额形同虚设。
+锁本身用固定 64 个槽位按 `userId` 散列（`JellyfishUserFacade.createLockFor`），而不是每用户一把——
+后者会随用户数无限增长，而建会话是纯内存操作、毫秒级，不同用户偶尔撞锁的代价可以忽略。
+
+### 命令闸门为什么必须存在
+
+命令的参数部分**不受归属校验保护**：`/delete <别人的会话 id>` 里的那个 id 从不经过本层的检查，
+闸门是唯一能拦住它的地方。同理 `/new` `/resume` 改进程级指针、`/session` 列出全进程会话。
+逐条理由写在 `CommandNotAllowedException` 的 javadoc 里，改名单之前先读它。
 
 ### `AppConfig` 由 properties 直接构造，不走 `ConfigLoader.loadAppConfig()`
 
@@ -157,15 +206,25 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 - `jellyfish.lifecycle.bootstrap-on-start` 缺省设 false：多数用例验的是「装配出哪些 Bean」，
   起一遍内核只会更慢。需要真启动的用例自己覆盖这一个属性，并断言「容器关闭后内核确实收敛了」——
   否则测试进程里会静默累积后台线程。
+- **要测命令就必须真启动内核**：系统命令（`/status` `/usage`…）是在 `AgentHarness.bootstrap()` 里
+  注册的，不起内核时命令域是空的——那时测出来的「命令能跑」是假的（实际拿到的是「未知命令」）。
 - 生命周期与 Web 容器的相对顺序用**真容器**验（`JellyfishLifecycleOrderingTest`）：
   那条性质由 Spring 的 phase 规则合成，mock 掉容器就等于把被测的性质抽走了。
+- **不要为了让测试好写而去 mock `TurnRegistry` 之类的 final 内核组件**：本仓库没有引
+  `mockito-inline`。需要「会话正在跑」这种状态时，用一个真的 `TurnRegistry` 加一个自己写的
+  `ReActTurn` 存根（`IdleSessionReaperTest.NeverDoneTurn` 是范本）——那样测的才是真组件的语义。
 
 ## 已知边界与后续项
 
-- **已落地**：装配、生命周期、门面 Bean、yml 配置、装配契约测试。
+- **已落地**：装配、生命周期、门面 Bean、yml 配置、装配契约测试（P1）；
+  多用户护栏——会话归属、并发配额、会话数上限、闲置回收、审批网关、命令闸门（P2）。
 - **明确不做**：HTTP 接口（接口归接入方）；同进程多套内核。
-- **未落地**（分期见仓库 README）：多用户护栏（会话归属、每用户配额、闲置回收、越权校验、审批网关）、
-  插件接入（外部目录 + 内嵌）、示例工程。
+- **未落地**（分期见仓库 README）：插件接入（外部目录 + 自研插件，P3）、内嵌插件与示例工程（P4）、
+  按用户不同权限（内核策略按 `agentId` 全局共享，只能靠「每角色一个 agentId」表达）。
 - **多用户提醒**：内核**没有「用户」概念**——`Session` 无 owner 字段、`SessionManager.all()` 返回全进程会话、
-  插件也不做用户隔离。因此**在护栏落地之前，不要把 `sessionManager.all()` 或 `CommandManager` 的原始入口
-  直接暴露给业务侧**；涉密能力（`shell` / `mcp` / 脚本桥接）不要装进多租户进程。
+  插件也不做用户隔离。护栏都在 `user/` 包内，**绕过 `JellyfishUserFacade` 直接调内核 Bean 就是绕过全部护栏**。
+  另外涉密能力（`shell` / `mcp` / 脚本桥接）不要装进多租户进程：它们无沙箱、可起任意子进程、无并发上限。
+- **`@AutoConfigureAfter` 的必然性未被测试证明**：把 `JellyfishUserAutoConfiguration` 与内核配置的
+  相对顺序交给字母序（`JellyfishAutoConfiguration` < `JellyfishUserAutoConfiguration`）今天也恰好是对的，
+  因此删掉那个注解不会让任何用例变红。保留它的理由是「靠巧合的顺序不是契约」——
+  哪天两个类改名，`@ConditionalOnBean` 就会在错误的时机求值，护栏时有时无。
