@@ -1,0 +1,10 @@
+# Boot 2.7 的自动配置注册入口。
+#
+# 为什么用 spring.factories 而不是 META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports：
+# 前者在 2.7 上必定生效，后者要到 3.0 才成为唯一入口。迁移到 Boot 3 时把本文件换成
+# 那一份 imports 文件即可（内容只有一行类名），代码不用动。
+#
+# 改这里之后请跑 JellyfishStarterRegistrationTest：它走完整的 SpringApplication，是唯一会读本文件的用例
+# （其它用例用 AutoConfigurations.of(...) 显式点名，把类名写错也照样绿）。
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+zcd.jellyfish.spring.boot.JellyfishAutoConfiguration
