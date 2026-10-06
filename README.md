@@ -97,6 +97,42 @@ jellyfish:
 }
 ```
 
+更常用的一份（三段可选配置都用到：采样参数、厂商私有字段、自定义请求头）：
+
+```json
+{
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-4o",
+  "providers": {
+    "openai": {
+      "type": "openai",
+      "apiKey": "${OPENAI_API_KEY}",
+      "sampling": { "temperature": 0.2, "topP": 0.95, "stop": ["</done>"] },
+      "vendorBody": { "reasoning_effort": "low" },
+      "vendorHeaders": { "x-tenant": "team-a" },
+      "models": [
+        { "id": "gpt-4o", "name": "gpt-4o", "contextLength": 128000, "maxOutputTokens": 4096 },
+        { "id": "gpt-5", "name": "gpt-5", "contextLength": 400000, "maxOutputTokens": 8192,
+          "sampling": { "temperature": 1 } }
+      ]
+    }
+  }
+}
+```
+
+| 段 | 层级 | 说明 |
+| --- | --- | --- |
+| `sampling` | provider + model | `temperature` / `topP` / `topK` / `seed` / `frequencyPenalty` / `presencePenalty` / `stop`；model 级逐字段覆盖 provider 级，没写的不下发。**只放多家同义的参数**，各家专有的走 `vendorBody` |
+| `maxTokensField` | **仅 model** | 输出上限用哪个请求体字段名：`max_tokens`（缺省）/ `max_completion_tokens`。**OpenAI 的推理模型与 gpt-5 之后只认后者**，不对就会 400 |
+| `vendorBody` | provider + model | 厂商私有字段原样透传进请求体（`reasoning_effort`、`thinking`、`generationConfig.*`）；两级**深合并**，Gemini 那种嵌套容器不会被挤掉 |
+| `vendorHeaders` | **仅 provider** | 自定义请求头（网关鉴权 / 租户标识）；同名时覆盖内核的头，协议头（`Content-Type` / `Accept` / `Accept-Encoding` 等）写不进去 |
+| `cache` | provider | 缓存治理（`promptCacheKey` / `keepAliveSeconds`），影响命中率、不影响正确性 |
+
+**三段都有保留键**：内核自己生成的键（`model` / `messages` / `tools` / `stream` …）与已有正式入口的采样键
+不能从 `vendorBody` 覆盖，写了会在**解析配置时**被丢弃并告警（不阻断启动）。各厂商该配什么字段、
+哪些参数配了也不会生效（推理模式忽略采样参数、Claude 4.7+ 移除温度类参数等），见内核仓库 README 的
+「`models.json`」一节——那里有按厂商整理的「参数速查」与可直接抄的片段。
+
 密钥走环境变量（**不要把密钥写进配置文件**）。这些 JSON 的全量字段见内核仓库 README 的「配置」一节。
 
 **缺省**路径指向 `~/.jellyfish/` 与 `./.jellyfish/`，与内核 CLI 的缺省一致：同一个进程里跑 CLI 与本应用，
