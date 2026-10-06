@@ -12,6 +12,7 @@ import zcd.jellyfish.core.conversation.ShellTurnListener;
 import zcd.jellyfish.core.conversation.Submission;
 import zcd.jellyfish.core.conversation.SubmissionPolicy;
 import zcd.jellyfish.core.conversation.TurnRegistry;
+import zcd.jellyfish.infra.ask.AskChannel;
 import zcd.jellyfish.infra.command.CommandManager;
 import zcd.jellyfish.infra.permission.ApprovalChannel;
 import zcd.jellyfish.infra.session.Session;
@@ -29,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 多用户门面：接入方与内核之间的<b>唯一</b>入口，每个方法都以 {@code userId} 开头。
  * <p>
  * <b>它补的是什么</b>：内核不认识「用户」。{@code Session} 上没有 owner 字段、
- * {@code SessionManager.all()} 返回全进程会话、命令域可以直接操作任意会话、审批通道的 resolve
+ * {@code SessionManager.all()} 返回全进程会话、命令域可以直接操作任意会话、审批与提问通道的 resolve
  * 也不校验调用方说的会话是不是自己的。这些在「一个人在自己终端上操作」时都不是问题，
  * 而接进多用户服务之后每一条都是越权或泄漏。本类把这些判定收在一处，让业务侧<b>无从绕过</b>。
  * <p>
@@ -90,6 +91,9 @@ public class JellyfishUserFacade {
     /** 审批网关。 */
     private final ApprovalGateway approvals;
 
+    /** 提问网关。 */
+    private final AskGateway asks;
+
     /** 命令闸门。 */
     private final CommandGate gate;
 
@@ -107,11 +111,13 @@ public class JellyfishUserFacade {
      * @param owners       会话归属存储，不可为 {@code null}
      * @param quota        每用户配额，不可为 {@code null}
      * @param approvals    审批网关，不可为 {@code null}
+     * @param asks         提问网关，不可为 {@code null}
      * @param gate         命令闸门，不可为 {@code null}
      */
     public JellyfishUserFacade(SessionManager sessions, ConversationService conversation, ShellStreams streams,
                                TurnRegistry turns, CommandManager commands, SessionOwnerStore owners,
-                               UserQuotaGuard quota, ApprovalGateway approvals, CommandGate gate) {
+                               UserQuotaGuard quota, ApprovalGateway approvals, AskGateway asks,
+                               CommandGate gate) {
         this.sessions = sessions;
         this.conversation = conversation;
         this.streams = streams;
@@ -120,6 +126,7 @@ public class JellyfishUserFacade {
         this.owners = owners;
         this.quota = quota;
         this.approvals = approvals;
+        this.asks = asks;
         this.gate = gate;
         for (int i = 0; i < createLocks.length; i++) {
             createLocks[i] = new Object();
@@ -333,6 +340,66 @@ public class JellyfishUserFacade {
      */
     public boolean approve(String userId, String sessionId, String requestId, boolean approved) {
         return approvals.approve(userId, sessionId, requestId, approved);
+    }
+
+    /**
+     * 取某会话当前待答提问：头槽位（唯一可作答的那一条）在前，其后是排队区。
+     *
+     * @param userId    请求者标识
+     * @param sessionId 会话标识
+     * @return 待答提问列表；没有时为空列表
+     * @throws SessionAccessDeniedException 不是该会话的归属者时抛出
+     */
+    public List<AskChannel.Pending> pendingAsks(String userId, String sessionId) {
+        return asks.pendingAsks(userId, sessionId);
+    }
+
+    /**
+     * 作答：用户从候选项里选了一个。
+     *
+     * @param userId    请求者标识
+     * @param sessionId 会话标识
+     * @param requestId 待答提问标识
+     * @param optionId  选中的选项标识
+     * @return 本次调用真的落定了一条返回 {@code true}；该请求不在本会话、或已不是头槽位返回 {@code false}
+     * @throws SessionAccessDeniedException 不是该会话的归属者时抛出
+     */
+    public boolean answer(String userId, String sessionId, String requestId, String optionId) {
+        return asks.answer(userId, sessionId, requestId, optionId);
+    }
+
+    /**
+     * 作答：用户自己填了一个答案。
+     * <p>
+     * 文本会原样回灌给模型（作为工具结果），因此<b>归属校验是这条路径的前提</b>——
+     * 少了它就是一条把任意文本注入别人对话的路径。
+     *
+     * @param userId    请求者标识
+     * @param sessionId 会话标识
+     * @param requestId 待答提问标识
+     * @param text      用户自己填的答案原文，不可为空白
+     * @return 本次调用真的落定了一条返回 {@code true}；其余情形返回 {@code false}
+     * @throws SessionAccessDeniedException 不是该会话的归属者时抛出
+     */
+    public boolean answerWithText(String userId, String sessionId, String requestId, String text) {
+        return asks.answerWithText(userId, sessionId, requestId, text);
+    }
+
+    /**
+     * 放弃作答：客户端断开、用户关掉页面时用它把卡在提问上的回合放行。
+     * <p>
+     * 不调它的话，那条 {@code react} 线程要阻塞到超时（缺省 120 秒），而那个池只有 8 条线程。
+     * 终态是「用户取消了这次提问」，模型据此继续，回合照常跑完。
+     *
+     * @param userId    请求者标识
+     * @param sessionId 会话标识
+     * @param requestId 待答提问标识
+     * @param reason    说明，可为 {@code null}
+     * @return 本次调用真的落定了一条返回 {@code true}；其余情形返回 {@code false}
+     * @throws SessionAccessDeniedException 不是该会话的归属者时抛出
+     */
+    public boolean cancelAsk(String userId, String sessionId, String requestId, String reason) {
+        return asks.cancel(userId, sessionId, requestId, reason);
     }
 
     /**

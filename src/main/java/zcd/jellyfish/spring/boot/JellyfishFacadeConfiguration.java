@@ -9,6 +9,7 @@ import zcd.jellyfish.core.input.InputDirectives;
 import zcd.jellyfish.core.runtime.RunEventBus;
 import zcd.jellyfish.di.JellyfishRuntime;
 import zcd.jellyfish.infra.agent.AgentManager;
+import zcd.jellyfish.infra.ask.AskChannel;
 import zcd.jellyfish.infra.command.CommandManager;
 import zcd.jellyfish.infra.config.RuntimeConfig;
 import zcd.jellyfish.infra.event.EventChannel;
@@ -26,7 +27,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 把 {@link JellyfishRuntime} 的 20 个门面各暴露成一个 Spring Bean，供业务代码按类型注入。
+ * 把 {@link JellyfishRuntime} 的 21 个门面各暴露成一个 Spring Bean，供业务代码按类型注入。
  * <p>
  * <b>为什么需要这一层转发</b>：内核的门面只能从 {@code JellyfishRuntime} 上取，注入点写成
  * {@code runtime.agentHarness()} 会把「怎么拿到内核」这件事渗进每一个业务类。转发一次之后，
@@ -118,6 +119,9 @@ public class JellyfishFacadeConfiguration {
      * 接入方要用它做三件事：读本会话待裁决的那一条（{@code pending(sessionId)}）、
      * 读整条队列（{@code pendingApprovals(sessionId)}）、裁决（{@code resolve(id, approved)}）。
      * <b>只有头槽位那一条能被裁决</b>，排队中的请求调用 {@code resolve} 等于无事发生。
+     * <p>
+     * <b>多用户场景不要直接用本 Bean</b>：{@code resolve} 只校验「这条请求是不是它自己那个会话的头槽位」，
+     * 不校验调用方说的会话对不对。用 {@code user} 包下的审批网关（它先校验归属）。
      *
      * @param runtime 内核运行时，不可为 {@code null}
      * @return 人工审批通道
@@ -125,6 +129,28 @@ public class JellyfishFacadeConfiguration {
     @Bean
     public ApprovalChannel approvalChannel(JellyfishRuntime runtime) {
         return runtime.approvalChannel();
+    }
+
+    /**
+     * 提供提问通道。
+     * <p>
+     * 接入方要用它做三件事：读本会话待作答的那一条（{@code pending(sessionId)}）、
+     * 读整条队列（{@code pendingAsks(sessionId)}）、作答（{@code resolve(id, answer)}）。
+     * 与审批同口径：<b>只有头槽位那一条能被作答</b>，排队中的提问调用 {@code resolve} 等于无事发生。
+     * <p>
+     * 作答用内核 api 侧的 {@code AskAnswer}：{@code answered(optionId)} 表示选了某个候选项，
+     * {@code custom(text)} 表示用户自己填的答案，{@code cancelled(reason)} 表示放弃作答。
+     * 三个都是正常终态——提问不是审批，放弃与无人作答都不代表任何调用被拒绝。
+     * <p>
+     * <b>多用户场景不要直接用本 Bean</b>：{@code resolve} 不校验调用方说的会话是不是自己的。
+     * 用 {@code user} 包下的提问网关（它先校验归属）。
+     *
+     * @param runtime 内核运行时，不可为 {@code null}
+     * @return 提问通道
+     */
+    @Bean
+    public AskChannel askChannel(JellyfishRuntime runtime) {
+        return runtime.askChannel();
     }
 
     /**

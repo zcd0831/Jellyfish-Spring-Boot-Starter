@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Import;
  * 整条装配链只有三步，每一步都有它必须在的理由：
  * <ol>
  *     <li>{@link JellyfishRuntimeConfiguration} 造出内核对象图（<b>只调一次装配</b>，不在 Spring 里重建）；</li>
- *     <li>{@link JellyfishFacadeConfiguration} 把那 20 个门面转发成 Bean，供业务代码按类型注入；</li>
+ *     <li>{@link JellyfishFacadeConfiguration} 把那 21 个门面转发成 Bean，供业务代码按类型注入；</li>
  *     <li>本类注册 {@link JellyfishLifecycle}，把「内核什么时候起停」接到容器生命周期上。</li>
  * </ol>
  * <p>

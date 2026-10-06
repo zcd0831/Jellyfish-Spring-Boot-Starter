@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import zcd.jellyfish.api.RuntimeInfo;
 import zcd.jellyfish.core.AgentHarness;
 import zcd.jellyfish.di.JellyfishRuntime;
+import zcd.jellyfish.infra.ask.AskChannel;
 import zcd.jellyfish.infra.permission.ApprovalChannel;
 import zcd.jellyfish.infra.plugin.RuntimeInfoHolder;
 
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
@@ -52,10 +54,13 @@ class JellyfishLifecycleTest {
     @Mock
     private ApprovalChannel approvalChannel;
 
+    @Mock
+    private AskChannel askChannel;
+
     /**
      * 构造被测对象，并把内核门面接上 mock。
      * <p>
-     * 两个桩用 {@code lenient}：不同用例走的分支不同（关掉自动启动的用例一个门面都不碰），
+     * 四个桩用 {@code lenient}：不同用例走的分支不同（关掉自动启动的用例一个门面都不碰），
      * 严格模式会把「这个用例没用到那个桩」判成错误，而它与被测行为无关。
      *
      * @param approvalEnabled  是否启用审批通道
@@ -63,12 +68,26 @@ class JellyfishLifecycleTest {
      * @return 生命周期宿主
      */
     private JellyfishLifecycle lifecycle(boolean approvalEnabled, boolean bootstrapOnStart) {
+        return lifecycle(approvalEnabled, false, bootstrapOnStart);
+    }
+
+    /**
+     * 构造被测对象，并可单独打开提问通道。
+     *
+     * @param approvalEnabled  是否启用审批通道
+     * @param askEnabled       是否启用提问通道
+     * @param bootstrapOnStart 是否在启动时拉起内核
+     * @return 生命周期宿主
+     */
+    private JellyfishLifecycle lifecycle(boolean approvalEnabled, boolean askEnabled, boolean bootstrapOnStart) {
         JellyfishProperties properties = new JellyfishProperties();
         properties.getApproval().setEnabled(approvalEnabled);
+        properties.getAsk().setEnabled(askEnabled);
         properties.getLifecycle().setBootstrapOnStart(bootstrapOnStart);
         lenient().when(runtime.runtimeInfoHolder()).thenReturn(runtimeInfoHolder);
         lenient().when(runtime.agentHarness()).thenReturn(agentHarness);
         lenient().when(runtime.approvalChannel()).thenReturn(approvalChannel);
+        lenient().when(runtime.askChannel()).thenReturn(askChannel);
         return new JellyfishLifecycle(runtime, properties);
     }
 
@@ -207,6 +226,65 @@ class JellyfishLifecycleTest {
         order.verify(approvalChannel).detach();
         order.verify(agentHarness).shutdown();
         assertFalse(lifecycle.isRunning());
+    }
+
+    @Test
+    @DisplayName("启用提问通道时先挂通道再启动内核")
+    void start_should_attach_ask_before_bootstrap_when_enabled() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, true, true);
+
+        // When
+        lifecycle.start();
+
+        // Then
+        InOrder order = inOrder(runtimeInfoHolder, askChannel, agentHarness);
+        order.verify(runtimeInfoHolder).set(any(RuntimeInfo.class));
+        order.verify(askChannel).attach();
+        order.verify(agentHarness).bootstrap();
+    }
+
+    @Test
+    @DisplayName("未启用提问通道时不去动它（提问会立刻返回「无法送达用户」）")
+    void start_should_not_attach_ask_when_not_enabled() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, false, true);
+
+        // When
+        lifecycle.start();
+
+        // Then：不挂答复者时提问不阻塞任何线程，只是问不到人——与审批的 fail-closed 不同
+        verify(askChannel, never()).attach();
+    }
+
+    @Test
+    @DisplayName("停止时先摘提问再关内核（让卡在提问上的回合立刻继续）")
+    void stop_should_detach_ask_then_shutdown_when_running() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, true, true);
+        lifecycle.start();
+
+        // When
+        lifecycle.stop();
+
+        // Then：不收敛的话那些 react 线程要一直阻塞到超时，而进程马上就要退了
+        InOrder order = inOrder(askChannel, agentHarness);
+        order.verify(askChannel).detach();
+        order.verify(agentHarness).shutdown();
+    }
+
+    @Test
+    @DisplayName("未启用提问通道时停止不去动它")
+    void stop_should_not_touch_ask_when_not_enabled() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, false, true);
+        lifecycle.start();
+
+        // When
+        lifecycle.stop();
+
+        // Then
+        verify(askChannel, never()).detach();
     }
 
     @Test

@@ -73,6 +73,9 @@ public class JellyfishProperties {
     /** 人工审批。 */
     private Approval approval = new Approval();
 
+    /** 向用户提问。 */
+    private Ask ask = new Ask();
+
     /** 生命周期。 */
     private Lifecycle lifecycle = new Lifecycle();
 
@@ -218,6 +221,24 @@ public class JellyfishProperties {
      */
     public void setApproval(Approval approval) {
         this.approval = approval;
+    }
+
+    /**
+     * 获取提问配置。
+     *
+     * @return 提问配置
+     */
+    public Ask getAsk() {
+        return ask;
+    }
+
+    /**
+     * 设置提问配置。
+     *
+     * @param ask 提问配置
+     */
+    public void setAsk(Ask ask) {
+        this.ask = ask;
     }
 
     /**
@@ -445,6 +466,44 @@ public class JellyfishProperties {
 
         /**
          * 设置是否挂载审批通道。
+         *
+         * @param enabled 是否挂载
+         */
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+    }
+
+    /**
+     * 向用户提问配置。
+     * <p>
+     * {@code ask_user} 工具执行时会等用户作答，而作答只能由外壳提供。本 starter 不实现任何提问界面
+     * （那是接入方的事），因此这里是一个**必须显式打开**的开关，缺省关闭。
+     * <p>
+     * <b>缺省关闭的代价与审批不同，要分清</b>：通道未挂载时提问<b>立即</b>返回一条
+     * 「当前外壳没有交互界面，无法把提问送达用户」的<b>成功结果</b>，模型据此自行判断——这既不是失败，
+     * 也不阻塞任何线程（与审批未挂载时的 fail-closed 是两种口径）。挂上而接入方还没把作答接口接起来时，
+     * 提问会<b>阻塞 react 线程最多 120 秒</b>再返回「用户没有回答」。因此缺省关闭仍然是更安全的一侧，
+     * 接好提问接口之后再打开；打开之前 {@code ask_user} 对模型是可用的，只是问不到人。
+     *
+     * @author zcd
+     */
+    public static class Ask {
+
+        /** 是否挂载提问通道。 */
+        private boolean enabled;
+
+        /**
+         * 判断是否挂载提问通道。
+         *
+         * @return 挂载返回 {@code true}
+         */
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        /**
+         * 设置是否挂载提问通道。
          *
          * @param enabled 是否挂载
          */

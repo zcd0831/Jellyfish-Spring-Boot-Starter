@@ -60,6 +60,7 @@ class JellyfishUserAutoConfigurationTest {
             assertThat(context).hasSingleBean(InMemorySessionOwnerStore.class);
             assertThat(context).hasSingleBean(UserQuotaGuard.class);
             assertThat(context).hasSingleBean(ApprovalGateway.class);
+            assertThat(context).hasSingleBean(AskGateway.class);
             assertThat(context).hasSingleBean(CommandGate.class);
             assertThat(context).hasSingleBean(JellyfishUserFacade.class);
             assertThat(context).hasSingleBean(IdleSessionReaper.class);

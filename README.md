@@ -70,6 +70,9 @@ jellyfish:
   approval:
     enabled: false                          # 见下「审批」
 
+  ask:
+    enabled: false                          # 见下「提问」
+
   lifecycle:
     bootstrap-on-start: true                # false = 只装配不启动，自己控制时机
 ```
@@ -152,12 +155,13 @@ public class ChatController {
 ### `JellyfishUserFacade` 方法一览
 
 `createSession` / `listSessions` / `snapshot` / `closeSession` / `deleteSession` / `chat` / `cancel` /
-`isTurnRunning` / `pendingApprovals` / `approve` / `executeCommand`。
+`isTurnRunning` / `pendingApprovals` / `approve` / `pendingAsks` / `answer` / `answerWithText` /
+`cancelAsk` / `executeCommand`。
 
 ### 四条必须遵守的纪律
 
 1. **交互一律走 `JellyfishUserFacade`，不要直接用内核 Bean。** 内核 Bean（`SessionManager`、
-   `CommandManager`、`ApprovalChannel`…）**没有归属校验**，绕过门面就是绕过全部护栏。
+   `CommandManager`、`ApprovalChannel`、`AskChannel`…）**没有归属校验**，绕过门面就是绕过全部护栏。
 2. **不要调 `switchTo` / `createDefault`。** 那是进程级的「当前会话」指针，多用户下会让一个用户的
    会话变成所有人的。门面内部一律用 `create(agentId, provider, model)`。
 3. **不要调 `/new`、`/resume`、`/delete`、`/session`、`/reload`。** 门面的 `executeCommand` 已经拦住了
@@ -181,6 +185,33 @@ public class ChatController {
 也可以注入内核的 `ApprovalChannel` 直接读（`pending(sessionId)` / `pendingApprovals(sessionId)`），
 但**裁决必须走门面**——网关额外校验了 `requestId` 属于本会话，直接调内核是越权漏洞。
 
+### 提问（`jellyfish.ask.enabled`）
+
+`ask_user` 工具（官方 tools 插件提供）执行时会等用户作答，而作答只能由外壳提供。本 starter 不实现提问
+界面，因此这里同样**缺省关闭**，但**代价与审批不同**：
+
+- **关闭**时：提问**立即**返回一条「当前外壳没有交互界面，无法把提问送达用户」的**成功结果**，
+  模型据此自行判断。它既不失败、也不阻塞任何线程（审批关闭时是 fail-closed，两者口径不同）；
+- **打开**时：提问会阻塞 `react` 线程**最多 120 秒**再返回「用户没有回答」。因此**接好作答接口之后再打开**。
+
+打开之后用 `jellyfish.pendingAsks(userId, sessionId)` 与下面三个方法：
+
+```java
+// 用户点了某个候选项
+jellyfish.answer(userId, sessionId, requestId, "a");
+// 用户自己敲了一个答案（选项都不合适时）
+jellyfish.answerWithText(userId, sessionId, requestId, "都不合适，改成先做 Server");
+// 放弃作答：客户端断开、用户关掉页面时用它放行，而不是等满 120 秒
+jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
+```
+
+与审批同口径：**只有头槽位那一条能被作答**，对排队中的提问调用它们返回 `false`。
+三种终态都是正常的——问答不是权限，**放弃作答与超时都不代表任何调用被拒绝**。
+
+也可以注入内核的 `AskChannel` 直接读（`pending(sessionId)` / `pendingAsks(sessionId)`），
+但**作答必须走门面**。这一条比审批的同名要求更要紧：答案会作为**工具结果原文进那个会话的模型上下文**，
+因此少了归属校验就不只是越权，还是一条把任意文本注入别人对话的路径。
+
 ## 配置
 
 ### starter 自己的配置
@@ -195,6 +226,7 @@ public class ChatController {
 | `jellyfish.plugins.roots` | `['~/.jellyfish/plugins/']` | 插件扫描目录，顺序即扫描顺序；平铺 jar 与「一插件一子目录 + `plugin.properties`」都支持 |
 | `jellyfish.runtime.interactive` | `false` | 是否有终端，插件据此降级。**外壳种类不可配**，恒为「服务化外壳」（`hasUI=false`） |
 | `jellyfish.approval.enabled` | `false` | 是否挂载审批通道，见上 |
+| `jellyfish.ask.enabled` | `false` | 是否挂载提问通道，见上 |
 | `jellyfish.lifecycle.bootstrap-on-start` | `true` | `false` = 只装配不启动内核，自己控制时机（测试常用） |
 
 ### 多用户护栏的配置
@@ -269,6 +301,7 @@ public class ChatController {
 | **每用户会话数上限** | 会话表只增不减、无上限 | 建会话时检查；「查数 + 建 + 绑定」在同一把锁里完成 |
 | **闲置回收** | 无 TTL、无淘汰，消息全量驻留内存 | 定时 `close()`；**跳过有在途回合的会话**（长调用不刷新时间戳，只看时间会误杀），也跳过没有归属者的会话 |
 | **审批归属** | `resolve` 只校验「是不是它自己会话的头槽位」，**不校验调用方说的会话对不对** | 网关额外要求 requestId 属于本会话且是头槽位 |
+| **提问归属** | `resolve` 同上；而答案会作为工具结果原文进模型上下文 | 同一条要求，且更要紧——少了它既是越权，也是**内容注入**路径 |
 | **命令入口** | `/new` `/resume` 改进程级指针；`/delete <别人的 id>` 的参数不受归属保护；`/session` 列出全进程会话 | 命令闸门（名单可配） |
 
 **`SessionOwnerStore` 是唯一的可替换点**：它是一条 SPI，不是内核组件的视图。归属存在内存还是关系库，
@@ -280,10 +313,10 @@ public class ChatController {
 
 ## 注入内核 Bean（进阶）
 
-除了 `JellyfishUserFacade`，starter 还把 `JellyfishRuntime` 的 20 个门面各注册成了一个 Bean，按类型即可注入：
+除了 `JellyfishUserFacade`，starter 还把 `JellyfishRuntime` 的 21 个门面各注册成了一个 Bean，按类型即可注入：
 `ConversationService`（发起对话的唯一入口）、`ShellStreams`（订阅回合事件）、`SessionManager`、
-`ModelManager`、`AgentManager`、`PermissionManager`、`ApprovalChannel`、`CommandManager`、`EventChannel`、
-`ExtensionRegistry`、`ConversationCompactor`、`InputDirectives`、`TurnRegistry`、`RunEventBus`、
+`ModelManager`、`AgentManager`、`PermissionManager`、`ApprovalChannel`、`AskChannel`、`CommandManager`、
+`EventChannel`、`ExtensionRegistry`、`ConversationCompactor`、`InputDirectives`、`TurnRegistry`、`RunEventBus`、
 `RuntimeConfig`、`SessionDefaults`、`RuntimeInfoHolder`、`HealthCheck`、`LlmClientFactory`、`AgentHarness`。
 
 **但这些 Bean 刻意不做 `@ConditionalOnMissingBean`——`SessionOwnerStore` 是唯一的例外。**
@@ -322,7 +355,10 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 
 - **做不到「按用户不同权限」**：内核的权限策略按 `agentId` 全局共享，因此同一个 agent 对不同用户只能有
   同一套权限。要区分角色，就给每个角色定义一个 `agentId`，建会话时按角色选。
-- **审批队列每会话上限 8 条**：第 9 条起直接按拒绝处理；且只有头槽位能被裁决，排队中的请求裁决它等于无事发生。
+- **审批与提问队列都是每会话上限 8 条**：第 9 条起，审批直接按拒绝处理、提问直接返回「问不到人」；
+  且只有头槽位能被裁决 / 作答，对排队中的那一条调用等于无事发生（返回 `false`）。
+- **两者都会占用 `react` 线程直到被作答或超时**：`react` 池只有 8 条线程（= 并发顶层回合上限），
+  因此接入方在客户端断开时应当调 `cancelAsk` / 拒绝待审项，而不是放着等满 120 秒。
 - **绕过门面就是绕过全部护栏**：内核**没有「用户」概念**——`Session` 无 owner 字段、`SessionManager.all()`
   返回全进程会话、插件也不做用户隔离。护栏都在 `user/` 包里，**直接调内核 Bean 就等于把它们全部关掉**。
 - **涉密能力不要装进多租户进程**：`shell`（无沙箱、可起任意子进程、无并发上限）、`mcp`（fork 外部进程）、

@@ -41,7 +41,7 @@ src/main/java/zcd/jellyfish/spring/boot/
 ├── JellyfishAutoConfiguration.java        # 内核入口：条件装配
 ├── JellyfishProperties.java               # @ConfigurationProperties("jellyfish")：只描述路径与开关
 ├── JellyfishRuntimeConfiguration.java     # @Bean AppConfig + @Bean JellyfishRuntime（装配根）
-├── JellyfishFacadeConfiguration.java      # 把 JellyfishRuntime 的 20 个门面各注册成一个 @Bean
+├── JellyfishFacadeConfiguration.java      # 把 JellyfishRuntime 的 21 个门面各注册成一个 @Bean
 ├── JellyfishLifecycle.java                # SmartLifecycle：写 RuntimeInfo → bootstrap / shutdown
 └── user/                                  # 多用户护栏（内核没有「用户」，全靠这一层）
     ├── JellyfishUserAutoConfiguration.java / JellyfishUserProperties.java
@@ -50,6 +50,7 @@ src/main/java/zcd/jellyfish/spring/boot/
     ├── SessionSummary.java                # 列表页用的轻量投影（不含消息正文）
     ├── UserQuotaGuard.java                # 每用户并发回合 + 会话数配额
     ├── ApprovalGateway.java               # 审批：归属校验 + 只裁决本会话头槽位
+    ├── AskGateway.java                    # 提问：归属校验 + 只作答本会话头槽位（兼防内容注入）
     ├── CommandGate.java                   # 命令闸门：拒绝会碰进程级状态 / 别人会话的命令
     ├── IdleSessionReaper.java             # 闲置回收（SmartLifecycle，phase 比内核大 1）
     └── *Exception.java                    # 越权 / 超配额 / 命令被拒
@@ -67,6 +68,9 @@ src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册�
   引进来**（会拖进 Dagger 运行期依赖，并使内核加一个绑定就需要 starter 跟着改）。装配知识只写一份。
 - **审批网关必须自己校验 `requestId` 属于本会话**：内核的 `ApprovalChannel.resolve(id, approved)` 只校验
   「是不是它自己会话的头槽位」，**不校验调用方说的会话对不对**——少了这一步就是一个真实的越权漏洞。
+- **提问网关同一条要求，而且更要紧**：内核的 `AskChannel.resolve(id, answer)` 有完全相同的缺口；
+  而提问的答案会作为**工具结果原文进那个会话的模型上下文**，因此少了归属校验就不只是越权，
+  还是一条把任意文本注入别人对话的路径。审批与提问的网关是**两个必需的组件，不是可选的加固**。
 - **命令闸门必须存在**：命令的**参数部分不受归属校验保护**（`/delete <别人的会话 id>` 里的 id 从不经过本层
   检查），闸门是唯一能拦住它的地方。逐条理由写在 `CommandNotAllowedException` 的 javadoc 里。
 - **`AppConfig` 由 properties 直接构造，不走 `ConfigLoader.loadAppConfig()`**：后者读写死的
@@ -77,6 +81,8 @@ src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册�
 - **`RuntimeInfo` 必须如实反映「有没有审批通道」**：`RuntimeInfo.server(...)` 恒把 `supportsApproval` 置为
   `true`，未挂审批通道却这样声明会让插件按「审批可用」规划行为，结果是每次调用白等 120 秒再失败——
   比直接拒绝更糟。因此用 `new RuntimeInfo(Shell.SERVER, false, false, interactive)` 如实填写。
+  **提问通道没有对应字段，也不为它伪造一个**：提问不是安全边界，「能不能问」由通道运行时返回
+  `UNAVAILABLE` 如实反映，不靠启动期的静态降级。
 - **`JellyfishLifecycle.getPhase()` 取 `Integer.MIN_VALUE`**（启动最先、停止最后）。**不要改成「比 Web 容器
   小一点」**：Web 容器的 phase 是 Boot 的内部实现（2.x 是 `Integer.MAX_VALUE - 1`，较新版本已改成
   `Integer.MAX_VALUE - 1024`），跟它减一个魔数会在某次升级 Boot 时静默失效。

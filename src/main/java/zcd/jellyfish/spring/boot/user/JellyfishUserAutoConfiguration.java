@@ -74,6 +74,23 @@ public class JellyfishUserAutoConfiguration {
     }
 
     /**
+     * 提供提问网关。
+     * <p>
+     * <b>它与审批网关一样是必需的，不是可选的加固</b>：内核的 {@code AskChannel.resolve(id, answer)}
+     * 同样只校验「是不是它自己会话的头槽位」，不校验调用方说的会话对不对。少了这一层，
+     * 任何人都能替别人作答；而提问的答案会作为工具结果原文进那个会话的模型上下文，
+     * 因此它同时还是一条内容注入路径。
+     *
+     * @param runtime 内核运行时，不可为 {@code null}
+     * @param owners  会话归属存储，不可为 {@code null}
+     * @return 提问网关，保证非 {@code null}
+     */
+    @Bean
+    public AskGateway jellyfishAskGateway(JellyfishRuntime runtime, SessionOwnerStore owners) {
+        return new AskGateway(runtime.askChannel(), owners);
+    }
+
+    /**
      * 提供命令闸门。
      *
      * @param properties 配置，不可为 {@code null}
@@ -91,16 +108,17 @@ public class JellyfishUserAutoConfiguration {
      * @param owners   会话归属存储，不可为 {@code null}
      * @param quota    配额闸门，不可为 {@code null}
      * @param approvals 审批网关，不可为 {@code null}
+     * @param asks     提问网关，不可为 {@code null}
      * @param gate     命令闸门，不可为 {@code null}
      * @return 多用户门面，保证非 {@code null}
      */
     @Bean
     public JellyfishUserFacade jellyfishUserFacade(JellyfishRuntime runtime, SessionOwnerStore owners,
                                                   UserQuotaGuard quota, ApprovalGateway approvals,
-                                                  CommandGate gate) {
+                                                  AskGateway asks, CommandGate gate) {
         return new JellyfishUserFacade(runtime.sessionManager(), runtime.conversationService(),
                 runtime.shellStreams(), runtime.turnRegistry(), runtime.commandManager(), owners, quota,
-                approvals, gate);
+                approvals, asks, gate);
     }
 
     /**

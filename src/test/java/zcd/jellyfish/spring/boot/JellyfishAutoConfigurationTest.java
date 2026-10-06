@@ -16,6 +16,7 @@ import zcd.jellyfish.core.input.InputDirectives;
 import zcd.jellyfish.core.runtime.RunEventBus;
 import zcd.jellyfish.di.JellyfishRuntime;
 import zcd.jellyfish.infra.agent.AgentManager;
+import zcd.jellyfish.infra.ask.AskChannel;
 import zcd.jellyfish.infra.command.CommandManager;
 import zcd.jellyfish.infra.config.AppConfig;
 import zcd.jellyfish.infra.config.RuntimeConfig;
@@ -98,7 +99,7 @@ class JellyfishAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("20 个门面一个不少，且都是同一张对象图上的视图")
+    @DisplayName("21 个门面一个不少，且都是同一张对象图上的视图")
     void context_should_expose_every_facade_when_enabled() {
         // When / Then
         runner().run(context -> {
@@ -109,6 +110,7 @@ class JellyfishAutoConfigurationTest {
             assertThat(context).hasSingleBean(AgentManager.class);
             assertThat(context).hasSingleBean(PermissionManager.class);
             assertThat(context).hasSingleBean(ApprovalChannel.class);
+            assertThat(context).hasSingleBean(AskChannel.class);
             assertThat(context).hasSingleBean(ConversationCompactor.class);
             assertThat(context).hasSingleBean(InputDirectives.class);
             assertThat(context).hasSingleBean(CommandManager.class);
@@ -129,6 +131,7 @@ class JellyfishAutoConfigurationTest {
             assertThat(context.getBean(ModelManager.class)).isSameAs(runtime.modelManager());
             assertThat(context.getBean(ShellStreams.class)).isSameAs(runtime.shellStreams());
             assertThat(context.getBean(ApprovalChannel.class)).isSameAs(runtime.approvalChannel());
+            assertThat(context.getBean(AskChannel.class)).isSameAs(runtime.askChannel());
             assertThat(context.getBean(HealthCheck.class)).isSameAs(runtime.healthCheck());
         });
     }
