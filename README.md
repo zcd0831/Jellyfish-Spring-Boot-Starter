@@ -130,9 +130,9 @@ jellyfish:
 
 **三段都有保留键**：内核自己生成的键（`model` / `messages` / `tools` / `stream` …）与已有正式入口的采样键
 不能从 `vendorBody` 覆盖，写了会在**解析配置时**被丢弃并告警（不阻断启动）。各厂商该配什么字段、
-思考强度（`reasoning_effort` / `thinking` / `thinkingLevel`）怎么配、以及哪些参数配了也不会生效
-（思考模式与采样参数互相挑食、Claude 新代际移除温度类参数等），见内核仓库 README 的
-「`models.json`」一节——那里有「各厂商参数速查」、单列的「思考强度（推理控制）」与可直接抄的片段。
+思考强度（`reasoning_effort` / `thinking` / `thinkingLevel`）怎么配、以及会踩的坑，见内核仓库 README 的
+「`models.json`」一节——那里按 `providers.<name>` / `models[]` / `sampling` / `vendorBody` 四层列了字段表，
+后附「坑」。
 
 密钥走环境变量（**不要把密钥写进配置文件**）。这些 JSON 的全量字段见内核仓库 README 的「配置」一节。
 
