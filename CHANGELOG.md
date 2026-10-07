@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Maven 坐标由 `zcd` 改为 `io.github.zcd0831`，版本号 0.1.1，已发布到 Maven Central；依赖的内核
+  `io.github.zcd0831:jellyfish-di:0.1.1` 也来自中央仓库，接入方不必再本地 `install` 内核。
+- 显式声明 `url` / `licenses` / `developers` / `scm`：parent 是 `spring-boot-starter-parent`，
+  不写就会继承 Spring 的项目主页、Apache 2.0 许可与开发者信息。
+- 新增 `release` profile（`-P release`）承载 source / javadoc / GPG 签名 / Central 发布四个插件。
+
 ## [0.1.0] - 2026-10-07
 
 ### Added

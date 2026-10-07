@@ -14,7 +14,7 @@
 
 1. **不提供任何 HTTP 接口**。接口由接入方自己写（`@RestController` + `SseEmitter` 等），本 starter 只交付
    编程式 API。带上 `spring-boot-starter-web` 等于替接入方决定技术选型。
-2. **不改内核**。只依赖内核的装配模块 `zcd:jellyfish-di`，用它的 `JellyfishAssembler` 装配。
+2. **不改内核**。只依赖内核的装配模块 `io.github.zcd0831:jellyfish-di`，用它的 `JellyfishAssembler` 装配。
    内核有需要改的地方去 `Jellyfish` 仓库改，不在这里绕。
 3. **一个 JVM 一个内核**。内核是进程级单例语义，因此本 starter 不试图支持「同进程两套内核」。
 

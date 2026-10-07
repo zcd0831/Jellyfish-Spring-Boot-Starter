@@ -44,7 +44,7 @@ public class JellyfishRuntimeConfiguration {
      * 不由 Bean 销毁触发。若留给 Spring 自动推断（它会去找 {@code close()} / {@code shutdown()}），
      * 就会多出一条与生命周期并行的关闭路径——两条路径的顺序没有保证。
      *
-     * @param appConfig 应用级配置，不可为 {@code null}
+     * @param jellyfishAppConfig 应用级配置，不可为 {@code null}
      * @return 内核运行时门面，保证非 {@code null}
      */
     @Bean(destroyMethod = "")

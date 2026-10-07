@@ -12,18 +12,44 @@
         <relativePath/>
     </parent>
 
-    <groupId>zcd</groupId>
+    <groupId>io.github.zcd0831</groupId>
     <artifactId>jellyfish-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <name>Jellyfish Spring Boot Starter</name>
     <description>把 Jellyfish 内核接入已有的 Spring Boot 应用：装配、生命周期与门面 Bean。接口由接入方自己定义。</description>
+
+    <!-- 发布到 Maven Central 的硬性元数据，这里必须显式写全。
+         本模块的 parent 是 spring-boot-starter-parent，那份 POM 自带 url（spring.io）、
+         Apache 2.0 许可、开发者（Spring <ask@spring.io>）与指向 spring-projects/spring-boot 的 scm；
+         省略任何一个都会继承到 Spring 的值，等于把本 starter 声明成 Spring 的项目。 -->
+    <url>https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://www.opensource.org/licenses/mit-license.php</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>zcd0831</id>
+            <name>zcd</name>
+            <email>zcd0831@users.noreply.github.com</email>
+            <url>https://github.com/zcd0831</url>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:git://github.com/zcd0831/Jellyfish-Spring-Boot-Starter.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/zcd0831/Jellyfish-Spring-Boot-Starter.git</developerConnection>
+        <url>https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter</url>
+    </scm>
 
     <properties>
         <java.version>1.8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- 内核版本：内核还没发布到中央仓库，先在 Jellyfish 里 mvn install 装进本地仓库 -->
-        <jellyfish.version>0.1.0</jellyfish.version>
+        <!-- 内核版本：内核模块（jellyfish-di 及其传递依赖）已发布到中央仓库，
+             本地调试内核时仍用 Jellyfish 仓库里的 mvn install 覆盖它，两者坐标一致。 -->
+        <jellyfish.version>0.1.1</jellyfish.version>
 
         <!-- 覆盖 Boot 的 BOM 属性，把 Jackson 对齐到内核构建所用的版本（内核 pom 的 jackson.version）。
              Boot 2.7.18 默认管 2.13.5，与内核差一个大版本；starter 自己的构建按内核那一份来，
@@ -34,13 +60,19 @@
 
         <!-- 覆盖率：与内核 / 插件两个仓库同一条版本线（0.8.12 是仍支持 Java 8 运行时的最后一个主线） -->
         <jacoco.version>0.8.12</jacoco.version>
+
+        <!-- 发布到 Maven Central：四个插件只在 release profile 里声明，版本集中在这里 -->
+        <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
+        <central-publishing-maven-plugin.version>0.9.0</central-publishing-maven-plugin.version>
     </properties>
 
     <dependencies>
         <!-- 装配层：传递带 jellyfish-api / jellyfish-infra / jellyfish-core。
              starter 只依赖它，不直接依赖三个内核模块——装配知识只有一处，见 AGENTS.md。 -->
         <dependency>
-            <groupId>zcd</groupId>
+            <groupId>io.github.zcd0831</groupId>
             <artifactId>jellyfish-di</artifactId>
             <version>${jellyfish.version}</version>
         </dependency>
@@ -99,4 +131,70 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- 发布到 Maven Central：只有显式 -P release 才加载（gpg:sign 绑在 verify 上，常驻会让本机
+         没有 GPG 私钥时连 mvn install 都跑不动）。发布命令：mvn -P release deploy
+         前置：settings.xml 里有 id=central 的 Portal 凭据，且 io.github.zcd0831 命名空间已验证。 -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <!-- sources jar：Central 强制要求 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven-source-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- javadoc jar：Central 强制要求 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven-javadoc-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- GPG 签名：每个上传的构件都要有对应 .asc，POM 自己也在其中 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven-gpg-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Central 发布：传到 Central Portal 后由你确认校验结果再点发布（autoPublish 缺省 false） -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central-publishing-maven-plugin.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

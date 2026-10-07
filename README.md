@@ -27,23 +27,23 @@
 | --- | --- |
 | JDK | 8 |
 | Spring Boot | 2.7（已在 2.7.18 上验过） |
-| 内核 | `zcd:jellyfish-di:0.1.0` |
+| 内核 | `io.github.zcd0831:jellyfish-di:0.1.1`（中央仓库） |
 
-**内核还没发布到中央仓库**，因此要先把内核装进本地仓库：
+**内核已发布到中央仓库**，依赖由 Maven 直接解析。只有在本地改了内核时才需要先把它装进本地仓库：
 
 ```bash
 (cd /path/to/Jellyfish && mvn -q install -DskipTests)
 ```
 
-忘了这一步的表现是「内核明明改了，这边编译却看不到」，或更糟——用到的是本地仓库里的旧快照。
+那时忘了这一步的表现是「内核明明改了，这边编译却看不到」，或更糟——用到的是本地仓库里的旧快照。
 
 ## 引入
 
 ```xml
 <dependency>
-    <groupId>zcd</groupId>
+    <groupId>io.github.zcd0831</groupId>
     <artifactId>jellyfish-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 
@@ -403,6 +403,19 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 - **配置改动何时生效**：`application.yml` 里的路径改动、新增 / 删除插件 jar、`models.json` / `agents.json` /
   `jellyfish.json` 的内容改动，本 starter 都建议**直接重启**（它不提供 `/reload` 的入口，内核那套热更新
   没有暴露出来）。
+
+## 发布到 Maven Central
+
+本 starter 发布在中央仓库，坐标 `io.github.zcd0831:jellyfish-spring-boot-starter:0.1.1`；它依赖的内核
+`io.github.zcd0831:jellyfish-di` 同样来自中央仓库。
+
+```bash
+mvn -P release deploy
+```
+
+source / javadoc / GPG 签名 / Central 发布四个插件只在 `-P release` 时加载，日常构建不会被 GPG 挡住。
+前置与内核仓库一致：`~/.m2/settings.xml` 里 id 为 `central` 的 Portal 凭据、`io.github.zcd0831` 命名空间
+已验证、本机 GPG 私钥可用且公钥已推到 keyserver。上传后在 Central Portal 里确认校验结果再点发布。
 
 ## License
 
