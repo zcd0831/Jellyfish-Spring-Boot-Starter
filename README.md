@@ -27,9 +27,9 @@
 | --- | --- |
 | JDK | 8 |
 | Spring Boot | 2.7（已在 2.7.18 上验过） |
-| 内核 | `zcd:jellyfish-di:0.0.1-SNAPSHOT` |
+| 内核 | `zcd:jellyfish-di:0.1.0` |
 
-**内核还没发 release**，因此开发期要先把内核装进本地仓库：
+**内核还没发布到中央仓库**，因此要先把内核装进本地仓库：
 
 ```bash
 (cd /path/to/Jellyfish && mvn -q install -DskipTests)
@@ -43,7 +43,7 @@
 <dependency>
     <groupId>zcd</groupId>
     <artifactId>jellyfish-spring-boot-starter</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 

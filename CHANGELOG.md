@@ -1,0 +1,33 @@
+# 变更日志
+
+本文件记录 Jellyfish Spring Boot Starter 所有值得接入方知道的变更。
+
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-07
+
+### Added
+
+- 自动配置：`JellyfishAutoConfiguration` + `JellyfishProperties`（`jellyfish.*` 只描述四份配置文件路径与
+  插件扫描目录），并在 `META-INF/spring.factories` 注册。
+- 装配根：`JellyfishRuntimeConfiguration` 由 properties 直接构造 `AppConfig` 并交付 `JellyfishRuntime`；
+  `JellyfishFacadeConfiguration` 把内核的 21 个门面各注册成一个 `@Bean`。
+- 生命周期：`JellyfishLifecycle`（`SmartLifecycle`）启动最先写 `RuntimeInfo` 并 bootstrap，停止最后
+  shutdown；`RuntimeInfo` 如实反映有没有审批通道（未挂通道就填 `false`）。
+- 多用户护栏 `JellyfishUserFacade`（业务侧唯一入口，每个方法以 `userId` 开头），配套组件：
+  - `SessionOwnerStore` / `InMemorySessionOwnerStore`：会话归属 SPI 与默认实现，
+    也是本 starter 唯一可被接入方替换的 Bean。
+  - `UserQuotaGuard`：每用户并发回合数与会话数配额。
+  - `ApprovalGateway`：校验 `requestId` 属于本会话且只裁决本会话头槽位。
+  - `AskGateway`：同上的归属校验，防止把任意文本注入别人的对话上下文。
+  - `CommandGate`：拒绝会碰进程级状态或别人会话的命令，也拦住命令参数里不受归属校验保护的部分。
+  - `IdleSessionReaper`：闲置会话回收（phase 比内核大 1）。
+- 提问通道接入：配置开关 + 门面方法 + 越权网关。
+- 配置属性 `jellyfish.lifecycle.bootstrap-on-start`（缺省 `false`）。
+- 越权 / 超配额 / 命令被拒三种专门异常。
+
+[Unreleased]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/releases/tag/v0.1.0

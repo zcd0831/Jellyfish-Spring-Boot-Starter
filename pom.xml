@@ -14,7 +14,7 @@
 
     <groupId>zcd</groupId>
     <artifactId>jellyfish-spring-boot-starter</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
     <name>Jellyfish Spring Boot Starter</name>
     <description>把 Jellyfish 内核接入已有的 Spring Boot 应用：装配、生命周期与门面 Bean。接口由接入方自己定义。</description>
 
@@ -22,8 +22,8 @@
         <java.version>1.8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- 内核版本：开发期靠本地仓库的 SNAPSHOT（先在 Jellyfish 里 mvn install） -->
-        <jellyfish.version>0.0.1-SNAPSHOT</jellyfish.version>
+        <!-- 内核版本：内核还没发布到中央仓库，先在 Jellyfish 里 mvn install 装进本地仓库 -->
+        <jellyfish.version>0.1.0</jellyfish.version>
 
         <!-- 覆盖 Boot 的 BOM 属性，把 Jackson 对齐到内核构建所用的版本（内核 pom 的 jackson.version）。
              Boot 2.7.18 默认管 2.13.5，与内核差一个大版本；starter 自己的构建按内核那一份来，
