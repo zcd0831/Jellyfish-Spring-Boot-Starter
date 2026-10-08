@@ -87,52 +87,60 @@ class JellyfishAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("默认启用：装配出装配根、配置与生命周期")
+    @DisplayName("默认启用：装配出内核持有者、配置与生命周期")
     void context_should_expose_assembly_when_enabled() {
         // When / Then
         runner().run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(JellyfishRuntime.class);
+            assertThat(context).hasSingleBean(JellyfishKernel.class);
             assertThat(context).hasSingleBean(AppConfig.class);
             assertThat(context).hasSingleBean(JellyfishLifecycle.class);
         });
     }
 
     @Test
-    @DisplayName("21 个门面一个不少，且都是同一张对象图上的视图")
-    void context_should_expose_every_facade_when_enabled() {
+    @DisplayName("只暴露观测面；内核门面与「按会话操作」的那些都不进容器")
+    void context_should_expose_observation_facades_only_when_enabled() {
         // When / Then
         runner().run(context -> {
             assertThat(context).hasSingleBean(LlmClientFactory.class);
             assertThat(context).hasSingleBean(ModelManager.class);
             assertThat(context).hasSingleBean(RuntimeConfig.class);
-            assertThat(context).hasSingleBean(AgentHarness.class);
             assertThat(context).hasSingleBean(AgentManager.class);
-            assertThat(context).hasSingleBean(PermissionManager.class);
-            assertThat(context).hasSingleBean(ApprovalChannel.class);
-            assertThat(context).hasSingleBean(AskChannel.class);
-            assertThat(context).hasSingleBean(ConversationCompactor.class);
-            assertThat(context).hasSingleBean(InputDirectives.class);
-            assertThat(context).hasSingleBean(CommandManager.class);
-            assertThat(context).hasSingleBean(SessionManager.class);
             assertThat(context).hasSingleBean(SessionDefaults.class);
-            assertThat(context).hasSingleBean(ExtensionRegistry.class);
-            assertThat(context).hasSingleBean(EventChannel.class);
             assertThat(context).hasSingleBean(RuntimeInfoHolder.class);
-            assertThat(context).hasSingleBean(ConversationService.class);
-            assertThat(context).hasSingleBean(TurnRegistry.class);
-            assertThat(context).hasSingleBean(ShellStreams.class);
-            assertThat(context).hasSingleBean(RunEventBus.class);
             assertThat(context).hasSingleBean(HealthCheck.class);
 
-            // 门面必须来自同一个 runtime：转发错了会在这里露出来（否则会出现同一份索引的第二份视图）
-            JellyfishRuntime runtime = context.getBean(JellyfishRuntime.class);
-            assertThat(context.getBean(SessionManager.class)).isSameAs(runtime.sessionManager());
-            assertThat(context.getBean(ModelManager.class)).isSameAs(runtime.modelManager());
-            assertThat(context.getBean(ShellStreams.class)).isSameAs(runtime.shellStreams());
-            assertThat(context.getBean(ApprovalChannel.class)).isSameAs(runtime.approvalChannel());
-            assertThat(context.getBean(AskChannel.class)).isSameAs(runtime.askChannel());
-            assertThat(context.getBean(HealthCheck.class)).isSameAs(runtime.healthCheck());
+            // 门面必须来自同一张对象图：转发错了会在这里露出来（否则会出现同一份索引的第二份视图）
+            // ——这里用「与通过持有者取到的是同一个实例」来钉住它
+            JellyfishKernel kernel = context.getBean(JellyfishKernel.class);
+            assertThat(context.getBean(ModelManager.class)).isSameAs(kernel.runtime().modelManager());
+            assertThat(context.getBean(HealthCheck.class)).isSameAs(kernel.runtime().healthCheck());
+            assertThat(context.getBean(SessionDefaults.class)).isSameAs(kernel.runtime().sessionDefaults());
+        });
+    }
+
+    @Test
+    @DisplayName("内核门面不交给容器：任何 Bean 都拿不到「按 id 操作任意会话」的能力")
+    void context_should_not_expose_kernel_facades_when_enabled() {
+        // When / Then：这一条是这道边界的回归防线。往里加回任意一个，它都会红
+        runner().run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(JellyfishRuntime.class);
+            assertThat(context).doesNotHaveBean(ApprovalChannel.class);
+            assertThat(context).doesNotHaveBean(AskChannel.class);
+            assertThat(context).doesNotHaveBean(SessionManager.class);
+            assertThat(context).doesNotHaveBean(ConversationService.class);
+            assertThat(context).doesNotHaveBean(TurnRegistry.class);
+            assertThat(context).doesNotHaveBean(ShellStreams.class);
+            assertThat(context).doesNotHaveBean(RunEventBus.class);
+            assertThat(context).doesNotHaveBean(CommandManager.class);
+            assertThat(context).doesNotHaveBean(AgentHarness.class);
+            assertThat(context).doesNotHaveBean(InputDirectives.class);
+            assertThat(context).doesNotHaveBean(ExtensionRegistry.class);
+            assertThat(context).doesNotHaveBean(PermissionManager.class);
+            assertThat(context).doesNotHaveBean(ConversationCompactor.class);
+            assertThat(context).doesNotHaveBean(EventChannel.class);
         });
     }
 
@@ -142,9 +150,9 @@ class JellyfishAutoConfigurationTest {
         // When / Then
         runner().withPropertyValues("jellyfish.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).doesNotHaveBean(JellyfishRuntime.class);
+            assertThat(context).doesNotHaveBean(JellyfishKernel.class);
             assertThat(context).doesNotHaveBean(AppConfig.class);
-            assertThat(context).doesNotHaveBean(SessionManager.class);
+            assertThat(context).doesNotHaveBean(ModelManager.class);
             assertThat(context).doesNotHaveBean(JellyfishLifecycle.class);
         });
     }
@@ -204,7 +212,7 @@ class JellyfishAutoConfigurationTest {
         // When / Then
         runner().withUserConfiguration(CustomExecutorConfig.class).run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(JellyfishRuntime.class);
+            assertThat(context).hasSingleBean(JellyfishKernel.class);
             assertThat(context).hasSingleBean(ExecutorService.class);
         });
     }

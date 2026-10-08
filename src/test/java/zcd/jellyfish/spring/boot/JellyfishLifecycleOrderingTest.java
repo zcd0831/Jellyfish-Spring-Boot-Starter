@@ -67,7 +67,7 @@ class JellyfishLifecycleOrderingTest {
             return null;
         }).when(agentHarness).shutdown();
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
-        context.getBeanFactory().registerSingleton("jellyfishRuntime", runtime);
+        context.getBeanFactory().registerSingleton("jellyfishKernel", new JellyfishKernel(runtime));
         context.getBeanFactory().registerSingleton("jellyfishProperties", new JellyfishProperties());
         context.getBeanFactory().registerSingleton("recorder", recorder);
         context.register(OrderingConfig.class);
@@ -112,8 +112,8 @@ class JellyfishLifecycleOrderingTest {
          * @return 内核生命周期
          */
         @Bean
-        public JellyfishLifecycle jellyfishLifecycle(JellyfishRuntime runtime, JellyfishProperties properties) {
-            return new JellyfishLifecycle(runtime, properties);
+        public JellyfishLifecycle jellyfishLifecycle(JellyfishKernel kernel, JellyfishProperties properties) {
+            return new JellyfishLifecycle(kernel, properties);
         }
 
         /**

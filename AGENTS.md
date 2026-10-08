@@ -40,11 +40,13 @@ mvn -q package -DskipTests
 src/main/java/zcd/jellyfish/spring/boot/
 ├── JellyfishAutoConfiguration.java        # 内核入口：条件装配
 ├── JellyfishProperties.java               # @ConfigurationProperties("jellyfish")：只描述路径与开关
-├── JellyfishRuntimeConfiguration.java     # @Bean AppConfig + @Bean JellyfishRuntime（装配根）
-├── JellyfishFacadeConfiguration.java      # 把 JellyfishRuntime 的 21 个门面各注册成一个 @Bean
+├── JellyfishRuntimeConfiguration.java     # @Bean AppConfig + @Bean JellyfishKernel（装配根，内核门面不进容器）
+├── JellyfishKernel.java                   # 内核门面的持有者：公开面无能力，runtime() 是包私有
+├── JellyfishFacadeConfiguration.java      # 只把「不按会话操作」的观测面注册成 @Bean
+├── JellyfishUserWiringConfiguration.java  # 用户层装配：从包私有访问器取内核能力，收成带归属校验的对象
 ├── JellyfishLifecycle.java                # SmartLifecycle：写 RuntimeInfo → bootstrap / shutdown
 └── user/                                  # 多用户护栏（内核没有「用户」，全靠这一层）
-    ├── JellyfishUserAutoConfiguration.java / JellyfishUserProperties.java
+    ├── JellyfishUserAutoConfiguration.java / JellyfishUserProperties.java   # 前者只管「什么时候装」
     ├── JellyfishUserFacade.java            # ★ 业务侧唯一入口，每个方法以 userId 开头
     ├── SessionOwnerStore.java / InMemorySessionOwnerStore.java   # 会话归属 SPI 与默认实现
     ├── SessionSummary.java                # 列表页用的轻量投影（不含消息正文）
@@ -60,7 +62,16 @@ src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册�
 
 ## 关键不变量
 
-- **门面 Bean 不做 `@ConditionalOnMissingBean`——`SessionOwnerStore` 是唯一的例外。**
+- **内核门面不进容器，只由 `JellyfishKernel` 持有（访问器包私有）**：内核门面（`JellyfishRuntime`）上挂的
+  能力都是「按 id 操作某个会话」且**不校验调用方是谁**（会话域、审批与提问通道、外壳通道、命令域、
+  扩展注册表）。一旦做成 Bean，容器里任何 Bean 注入进来就能读别人的对话正文、批准别人的工具调用，
+  归属校验只剩一句约定。**要加一个转发 Bean 之前，先问「拿到它做不做得了跨用户的事」**：
+  「不按会话操作、也读不到别人数据」的那几个（`ModelManager` / `AgentManager` / `RuntimeConfig` /
+  `SessionDefaults` / `RuntimeInfoHolder` / `HealthCheck` / `LlmClientFactory`）才可以。
+  要拿内核做别的事，请让接入方自己 `JellyfishAssembler.create(...)`。
+  **用户层的装配写在 `boot` 包（`JellyfishUserWiringConfiguration`）而不是 `user` 包**，因为只有与
+  `JellyfishKernel` 同包的代码才拿得到那份内核能力——包可见性就是这道边界，别为了「看起来整洁」把它挪回去。
+- **门面 Bean 不做 `@ConditionalOnMissingBean`——`SessionOwnerStore` 是仅有的例外之一。**
   前者是同一张对象图上的视图，让接入方「再注册一个 `ModelManager`」等于在同一个 JVM 里造出第二套内核状态，
   而坏掉的方式是静默的。**`SessionOwnerStore` 是一条 SPI**，归属存在内存还是关系库只有接入方知道，
   因此必须可替换。**加新的 `@ConditionalOnMissingBean` 之前，先问「这是内核组件的第二个视图，还是一条 SPI」。**

@@ -1,7 +1,9 @@
 # jellyfish-spring-boot-starter
 
-让**已有的 Spring Boot 应用**几行配置就拥有对接大模型的能力：一个自动配置 + 一组门面 Bean，
-业务代码可以直接注入内核的会话 / 回合 / 模型 / 权限 / 工具等能力，并**通过插件系统扩展**。
+让**已有的 Spring Boot 应用**几行配置就拥有对接大模型的能力：一个自动配置 + 一层带归属校验的多用户门面，
+业务代码注入 `JellyfishUserFacade` 就能建会话、提问、裁决审批，并**通过插件系统扩展**内核。
+内核门面默认**不进容器**（理由见「门面 Bean」一节），因此那些「按 id 操作任意会话」的能力不会
+以 Bean 的形式散落在你的容器里。
 
 内核是 [Jellyfish](https://github.com/zcd0831/Jellyfish)：三种外壳（CLI / TUI / Server）共享的同一个内核，
 能力全部由插件提供。本 starter 把那个内核搬进你的 Spring 容器。
@@ -197,8 +199,10 @@ public class ChatController {
 
 ### 四条必须遵守的纪律
 
-1. **交互一律走 `JellyfishUserFacade`，不要直接用内核 Bean。** 内核 Bean（`SessionManager`、
-   `CommandManager`、`ApprovalChannel`、`AskChannel`…）**没有归属校验**，绕过门面就是绕过全部护栏。
+1. **交互一律走 `JellyfishUserFacade`。** 内核没有归属校验——`SessionManager` 按 id 操作任意会话、
+   `ApprovalChannel` / `AskChannel` 只认「某会话的头槽位」不认调用方是谁、`ShellStreams` 能按 id 订阅
+   任意会话的事件流。因此 starter **默认不把这些门面注册成 Bean**（见下节）：容器里拿不到的，就用不着
+  记住「不要用它」。
 2. **不要调 `switchTo` / `createDefault`。** 那是进程级的「当前会话」指针，多用户下会让一个用户的
    会话变成所有人的。门面内部一律用 `create(agentId, provider, model)`。
 3. **不要调 `/new`、`/resume`、`/delete`、`/session`、`/reload`。** 门面的 `executeCommand` 已经拦住了
@@ -219,8 +223,9 @@ public class ChatController {
 做三件事：读本会话待裁决的那一条、读整条队列、裁决。
 **只有头槽位那一条能被裁决**，对排队中的请求调用 `approve` 等于无事发生（返回 `false`）。
 
-也可以注入内核的 `ApprovalChannel` 直接读（`pending(sessionId)` / `pendingApprovals(sessionId)`），
-但**裁决必须走门面**——网关额外校验了 `requestId` 属于本会话，直接调内核是越权漏洞。
+**不要想着绕过门面**：内核的 `ApprovalChannel` 不在容器里（见「门面 Bean」一节），而它只校验
+「这条请求是不是它自己那个会话的头槽位」、不校验调用方说的会话对不对——拿「我的会话 id + 别人的
+requestId」去调 `resolve`，内核会照办。
 
 ### 提问（`jellyfish.ask.enabled`）
 
@@ -245,9 +250,9 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 与审批同口径：**只有头槽位那一条能被作答**，对排队中的提问调用它们返回 `false`。
 三种终态都是正常的——问答不是权限，**放弃作答与超时都不代表任何调用被拒绝**。
 
-也可以注入内核的 `AskChannel` 直接读（`pending(sessionId)` / `pendingAsks(sessionId)`），
-但**作答必须走门面**。这一条比审批的同名要求更要紧：答案会作为**工具结果原文进那个会话的模型上下文**，
-因此少了归属校验就不只是越权，还是一条把任意文本注入别人对话的路径。
+也可以注入内核的 `AskChannel` 直接读（`pending(sessionId)` / `pendingAsks(sessionId)`）——**但它不在容器里**
+（见「门面 Bean」一节），而**作答必须走门面**。这一条比审批的同名要求更要紧：答案会作为**工具结果原文进
+那个会话的模型上下文**，因此少了归属校验就不只是越权，还是一条把任意文本注入别人对话的路径。
 
 ## 配置
 
@@ -349,18 +354,30 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 也在内存里）。**一旦你给会话加了持久化（自己写插件或换存储），归属也必须一起持久化**——否则重启后会话还在、
 归属没了，那些会话就变成谁也访问不到的孤儿。
 
-## 注入内核 Bean（进阶）
+## 门面 Bean：只暴露观测面
 
-除了 `JellyfishUserFacade`，starter 还把 `JellyfishRuntime` 的 21 个门面各注册成了一个 Bean，按类型即可注入：
-`ConversationService`（发起对话的唯一入口）、`ShellStreams`（订阅回合事件）、`SessionManager`、
-`ModelManager`、`AgentManager`、`PermissionManager`、`ApprovalChannel`、`AskChannel`、`CommandManager`、
-`EventChannel`、`ExtensionRegistry`、`ConversationCompactor`、`InputDirectives`、`TurnRegistry`、`RunEventBus`、
-`RuntimeConfig`、`SessionDefaults`、`RuntimeInfoHolder`、`HealthCheck`、`LlmClientFactory`、`AgentHarness`。
+starter 只把内核里**「不按会话操作、也读不到别人数据」**的那几个门面注册成 Bean，按类型即可注入：
+`ModelManager`、`AgentManager`、`RuntimeConfig`、`SessionDefaults`、`RuntimeInfoHolder`、`HealthCheck`、
+`LlmClientFactory`。
 
-**但这些 Bean 刻意不做 `@ConditionalOnMissingBean`——`SessionOwnerStore` 是唯一的例外。**
-它们不是可以随你替换的组件，而是同一张对象图上的视图：让接入方「再注册一个 `ModelManager`」等于在同一个
-JVM 里造出第二套内核状态，而坏掉的方式是静默的（配置刷了一份、另一份永远是空的）。需要不同行为时应当用
-内核的扩展点（插件），不是在 Spring 容器里替换内核组件。
+**内核门面（`JellyfishRuntime`）不进容器**，因此下面这些也都不在容器里：`SessionManager`、
+`ConversationService`、`ShellStreams`、`TurnRegistry`、`CommandManager`、`ApprovalChannel`、`AskChannel`、
+`PermissionManager`、`AgentHarness`、`EventChannel`、`RunEventBus`、`ExtensionRegistry`、`InputDirectives`、
+`ConversationCompactor`。
+
+**为什么不给**：这些能力都是「按 id 操作某个会话」，而它们**都不校验调用方是谁**。做成 Bean 之后，
+容器里任何一个 Bean（你写的、或某个第三方库的自动配置）注入进来就能读别人的对话正文、批准别人的工具
+调用、改掉进程级的「当前会话」指针——本 starter 那整套归属校验就只剩一句约定。**这道边界是编译期的**：
+内核门面由 `JellyfishKernel` 持有，它的访问器是包私有的，别的包里的 Bean 即使注入了那个 Bean 也调不到。
+
+业务侧要操作会话，走 `JellyfishUserFacade`（带归属校验）；要扩展内核，写插件（内核的扩展点）；
+真要一份内核句柄自己管（例如写一个自己的外壳），就自己 `JellyfishAssembler.create(...)`——那时你同时
+接管了它的启动、停止与配置加载，这也是本 starter 唯一不给的便利。
+
+**登记进来的这几个也刻意不做 `@ConditionalOnMissingBean`——`SessionOwnerStore` 与下面的 `CurrentUser`
+是仅有的两个例外。** 它们不是可以随你替换的组件，而是同一张对象图上的视图：让接入方「再注册一个
+`ModelManager`」等于在同一个 JVM 里造出第二套内核状态，而坏掉的方式是静默的（配置刷了一份、另一份永远
+是空的）。需要不同行为时应当用内核的扩展点（插件），不是在 Spring 容器里替换内核组件。
 
 加新的 `@ConditionalOnMissingBean` 之前，先问「这是内核组件的第二个视图，还是一条 SPI」。
 
@@ -398,7 +415,8 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 - **两者都会占用 `react` 线程直到被作答或超时**：`react` 池只有 8 条线程（= 并发顶层回合上限），
   因此接入方在客户端断开时应当调 `cancelAsk` / 拒绝待审项，而不是放着等满 120 秒。
 - **绕过门面就是绕过全部护栏**：内核**没有「用户」概念**——`Session` 无 owner 字段、`SessionManager.all()`
-  返回全进程会话、插件也不做用户隔离。护栏都在 `user/` 包里，**直接调内核 Bean 就等于把它们全部关掉**。
+  返回全进程会话、插件也不做用户隔离。护栏都在 `user/` 包里，而内核门面**默认不进容器**；
+  真要拿到它只能自己 `JellyfishAssembler.create(...)`，那时这些护栏就都在你手上了。
 - **涉密能力不要装进多租户进程**：`shell`（无沙箱、可起任意子进程、无并发上限）、`mcp`（fork 外部进程）、
   `python` / `node` 桥接（要解释器、每脚本一个进程）都不做用户隔离，装进来等于把所有用户放在同一个权限面里。
 - **配置改动何时生效**：`application.yml` 里的路径改动、新增 / 删除插件 jar、`models.json` / `agents.json` /

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import zcd.jellyfish.spring.boot.JellyfishAutoConfiguration;
+import zcd.jellyfish.spring.boot.JellyfishKernel;
 import zcd.jellyfish.spring.boot.JellyfishLifecycle;
 
 import java.nio.file.Path;
@@ -77,7 +78,7 @@ class JellyfishUserAutoConfigurationTest {
             assertThat(context).doesNotHaveBean(SessionOwnerStore.class);
             assertThat(context).doesNotHaveBean(IdleSessionReaper.class);
             // 内核侧不受影响：关掉护栏只是不做多用户适配
-            assertThat(context).hasSingleBean(zcd.jellyfish.di.JellyfishRuntime.class);
+            assertThat(context).hasSingleBean(JellyfishKernel.class);
             assertThat(context).hasSingleBean(JellyfishLifecycle.class);
         });
     }
@@ -132,12 +133,14 @@ class JellyfishUserAutoConfigurationTest {
     @Test
     @DisplayName("门面接的是内核那一份实例，不是另建的视图")
     void facade_should_use_kernel_instances_when_assembled() {
-        // When / Then
+        // When / Then：门面建的会话必须落在内核那一份会话表里。
+        // 断言只能走门面自己的视图——内核门面不在容器里（那正是这一层的意义），
+        // 而「同一条会话在归属者列表里可见」已经足以证明它落在真表上（另一份视图不会有它）
         runner().run(context -> {
-            zcd.jellyfish.di.JellyfishRuntime runtime = context.getBean(zcd.jellyfish.di.JellyfishRuntime.class);
-            // 用一个真会话验证门面读的确实是内核那份会话表：门面建的会话在 runtime 上也查得到
-            String sessionId = context.getBean(JellyfishUserFacade.class).createSession("alice");
-            assertTrue(runtime.sessionManager().exists(sessionId));
+            JellyfishUserFacade facade = context.getBean(JellyfishUserFacade.class);
+            String sessionId = facade.createSession("alice");
+            assertEquals(1, facade.listSessions("alice").size());
+            assertEquals(sessionId, facade.listSessions("alice").get(0).getSessionId());
         });
     }
 }

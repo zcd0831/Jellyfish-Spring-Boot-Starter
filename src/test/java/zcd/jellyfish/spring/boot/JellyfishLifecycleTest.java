@@ -96,7 +96,7 @@ class JellyfishLifecycleTest {
         lenient().when(runtime.agentHarness()).thenReturn(agentHarness);
         lenient().when(runtime.approvalChannel()).thenReturn(approvalChannel);
         lenient().when(runtime.askChannel()).thenReturn(askChannel);
-        return new JellyfishLifecycle(runtime, properties);
+        return new JellyfishLifecycle(new JellyfishKernel(runtime), properties);
     }
 
     @Test
@@ -110,7 +110,7 @@ class JellyfishLifecycleTest {
         lenient().when(runtime.runtimeInfoHolder()).thenReturn(runtimeInfoHolder);
         lenient().when(runtime.agentHarness()).thenReturn(agentHarness);
         lenient().when(runtime.projectConfigTrust()).thenReturn(trust);
-        JellyfishLifecycle lifecycle = new JellyfishLifecycle(runtime, properties);
+        JellyfishLifecycle lifecycle = new JellyfishLifecycle(new JellyfishKernel(runtime), properties);
 
         // When
         lifecycle.start();
@@ -199,7 +199,7 @@ class JellyfishLifecycleTest {
         properties.getRuntime().setInteractive(true);
         when(runtime.runtimeInfoHolder()).thenReturn(runtimeInfoHolder);
         when(runtime.agentHarness()).thenReturn(agentHarness);
-        JellyfishLifecycle lifecycle = new JellyfishLifecycle(runtime, properties);
+        JellyfishLifecycle lifecycle = new JellyfishLifecycle(new JellyfishKernel(runtime), properties);
         ArgumentCaptor<RuntimeInfo> captor = ArgumentCaptor.forClass(RuntimeInfo.class);
 
         // When

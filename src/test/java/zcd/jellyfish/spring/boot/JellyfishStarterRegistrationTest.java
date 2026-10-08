@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <b>为什么需要单独一个测试</b>：其它用例都用 {@code ApplicationContextRunner} +
  * {@code AutoConfigurations.of(JellyfishAutoConfiguration.class)}，那是**显式点名**加载配置类——
  * 于是 {@code spring.factories} 里把类名写错、漏写、或换了 Boot 版本后注册方式失效，这些用例全都照样绿。
- * 而现场表现是「starter 引进来了，`@Autowired SessionManager` 却没人提供」——正是最难猜的一类问题。
+ * 而现场表现是「starter 引进来了，`@Autowired JellyfishUserFacade` 却没人提供」——正是最难猜的一类问题。
  * <p>
  * 因此这里走完整的 {@link SpringApplication}：它会去读 {@code spring.factories}，走的就是接入方真实经历的那条路。
  * 用 {@code WebApplicationType.NONE} 起一个非 Web 容器，避免测试依赖 Web 栈。
@@ -53,9 +53,11 @@ class JellyfishStarterRegistrationTest {
             // Then：Bean 在，说明 spring.factories 的注册生效了
             // 用 getBeanNamesForType 而不是 hasSingleBean：后者是 ApplicationContextRunner 才给的断言，
             // 这里的上下文是裸的 ConfigurableApplicationContext
-            assertEquals(1, context.getBeanNamesForType(SessionManager.class).length);
+            assertEquals(1, context.getBeanNamesForType(JellyfishKernel.class).length);
             assertEquals(1, context.getBeanNamesForType(JellyfishLifecycle.class).length);
-            assertNotNull(context.getBean(SessionManager.class));
+            assertNotNull(context.getBean(JellyfishKernel.class));
+            // 内核门面不进容器：这是这一层的边界，顺带在这里钉一次
+            assertEquals(0, context.getBeanNamesForType(SessionManager.class).length);
             // 多用户护栏是 spring.factories 里的<b>第二条</b>注册，必须单独断言：
             // 只验内核那一半的话，第二个类名写错、或 @AutoConfigureAfter 漏了导致条件求值顺序不对，
             // 这条用例都不会红

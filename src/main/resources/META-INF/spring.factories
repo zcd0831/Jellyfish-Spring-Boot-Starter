@@ -5,7 +5,9 @@
 # 那一份 imports 文件即可（内容只有类名），代码不用动。
 #
 # 两个配置类的顺序由 JellyfishUserAutoConfiguration 上的 @AutoConfigureAfter 声明，不靠这里的排列：
-# 它需要内核运行时 Bean 先装配好（@ConditionalOnBean），而自动配置之间的顺序在这里是不保证的。
+# 它需要内核的持有者 Bean 先装配好（@ConditionalOnBean），而自动配置之间的顺序在这里是不保证的。
+# （多用户护栏的装配 JellyfishUserWiringConfiguration 不在这里：它由 JellyfishAutoConfiguration 直接
+#  @Import——它需要内核门面的包私有访问器，因此必须与持有者同包。）
 #
 # 改这里之后请跑 JellyfishStarterRegistrationTest：它走完整的 SpringApplication，是唯一会读本文件的用例
 # （其它用例用 AutoConfigurations.of(...) 显式点名，把类名写错也照样绿）。已验证两个条目都被它覆盖：

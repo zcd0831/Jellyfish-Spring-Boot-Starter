@@ -16,6 +16,16 @@
 
 ### Changed
 
+- **内核门面不再注册成 Spring Bean**（破坏性）：`JellyfishRuntime` 与 21 个转发门面（`SessionManager`、
+  `ConversationService`、`ShellStreams`、`TurnRegistry`、`CommandManager`、`ApprovalChannel`、`AskChannel`、
+  `PermissionManager`、`AgentHarness`、`EventChannel`、`RunEventBus`、`ExtensionRegistry`、`InputDirectives`、
+  `ConversationCompactor` 等）都从容器里移除；内核由 `JellyfishKernel` 持有，其访问器是包私有的。
+  理由：它们都是「按 id 操作某个会话」的能力，且都**不校验调用方是谁**——做成 Bean 之后，容器里任何
+  Bean 注入进来就能读别人的对话正文、批准别人的工具调用，归属校验只剩一句约定。
+  **迁移**：业务侧改用 `JellyfishUserFacade`（带归属校验）；确实需要一份内核句柄的（自写外壳等），
+  自己 `JellyfishAssembler.create(appConfig)` 并接管它的生命周期。仍然可作为 Bean 注入的只剩观测面：
+  `ModelManager`、`AgentManager`、`RuntimeConfig`、`SessionDefaults`、`RuntimeInfoHolder`、`HealthCheck`、
+  `LlmClientFactory`。`JellyfishLifecycle` 的构造参数随之由 `JellyfishRuntime` 改为 `JellyfishKernel`。
 - **项目级配置默认不加载**（破坏性，跟随内核 0.1.1 的同名变更）：它按进程当前目录读取，
   能改模型端点与密钥、新增 agent、改落盘目录。若此前依赖 `.jellyfish/*.json`、又没有把路径写成
   `classpath:`，需要在 `application.yml` 里显式打开 `jellyfish.trust-project-config: true`。

@@ -60,7 +60,7 @@ public class JellyfishLifecycle implements SmartLifecycle {
      */
     public static final int PHASE = Integer.MIN_VALUE;
 
-    /** 装配好的内核对象图。 */
+    /** 装配好的内核对象图：构造时从持有者取出（包私有访问器），不在容器里流转。 */
     private final JellyfishRuntime runtime;
 
     /** 配置。 */
@@ -71,12 +71,15 @@ public class JellyfishLifecycle implements SmartLifecycle {
 
     /**
      * 构造生命周期宿主。
+     * <p>
+     * <b>参数是持有者而不是内核门面</b>：门面不进容器（理由见 {@link JellyfishKernel}），
+     * 本类与它同包，因此构造时能从包里取出真正的门面。
      *
-     * @param runtime    装配好的内核对象图，不可为 {@code null}
+     * @param kernel     内核持有者，不可为 {@code null}
      * @param properties 配置，不可为 {@code null}
      */
-    public JellyfishLifecycle(JellyfishRuntime runtime, JellyfishProperties properties) {
-        this.runtime = Objects.requireNonNull(runtime, "runtime must not be null");
+    public JellyfishLifecycle(JellyfishKernel kernel, JellyfishProperties properties) {
+        this.runtime = Objects.requireNonNull(kernel, "kernel must not be null").runtime();
         this.properties = Objects.requireNonNull(properties, "properties must not be null");
     }
 
