@@ -268,11 +268,11 @@ public class JellyfishUserFacade {
         if (!quota.tryAcquireTurn(userId)) {
             throw new UserQuotaExceededException(userId, "同时进行的对话已达上限，请等前一轮结束后再试");
         }
-        QuotaReleasingListener tracked = new QuotaReleasingListener(userId, listener);
+        QuotaReleasingListener tracked = new QuotaReleasingListener(userId, listener, quota);
         try {
             // 必须先订阅再提交：回合一启动就会产出事件，晚订阅会丢掉开头那一段
             // （STARTED 之后紧接着可能就是 TEXT）。这条纪律与内核的三个外壳完全一致
-            tracked.subscription = streams.subscribe(sessionId, tracked);
+            tracked.attach(streams.subscribe(sessionId, tracked));
             Submission submission = conversation.submit(sessionId, text,
                     InputTransformRequest.Source.SERVER, SubmissionPolicy.serverChat());
             if (submission.getKind() != Submission.Kind.STARTED_TURN) {
@@ -451,70 +451,5 @@ public class JellyfishUserFacade {
     private Object createLockFor(String userId) {
         int hash = userId == null ? 0 : userId.hashCode();
         return createLocks[Math.abs(hash % CREATE_LOCK_STRIPES)];
-    }
-
-    /**
-     * 把「回合终态时归还额度并退订」绑到业务回调上的包装。
-     * <p>
-     * <b>归还必须恰好一次</b>：多还一次会让该用户的额度凭空变多（信号量会持续累加），少还一次会让它
-     * 永久少一个额度。因此用一次性标志把「终态事件」与「提交失败」这两条路都收敛到同一个入口，
-     * 谁先到谁生效。
-     *
-     * @author zcd
-     */
-    private final class QuotaReleasingListener implements ShellTurnListener {
-
-        /** 请求者标识。 */
-        private final String userId;
-
-        /** 业务侧的回调。 */
-        private final ShellTurnListener delegate;
-
-        /** 是否已经收尾（归还额度 + 退订）。 */
-        private final AtomicBoolean finished = new AtomicBoolean(false);
-
-        /** 可靠 lane 的订阅句柄，订阅成功后才非 {@code null}。 */
-        private volatile Subscription subscription;
-
-        /**
-         * 构造包装。
-         *
-         * @param userId   请求者标识
-         * @param delegate 业务侧回调
-         */
-        QuotaReleasingListener(String userId, ShellTurnListener delegate) {
-            this.userId = userId;
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void onTurnEvent(ShellTurnEvent event) {
-            try {
-                delegate.onTurnEvent(event);
-            } catch (RuntimeException e) {
-                // 业务回调抛错不该把内核的事件派发弄挂（订阅者在 react 线程上被同步调用）。
-                // 记下来、吞掉，让内核继续推后面的事件
-                LOG.warn("回合事件回调抛错，已忽略: sessionId={} kind={}",
-                        event.getSessionId(), event.getKind(), e);
-            } finally {
-                if (event.isTerminal()) {
-                    finish();
-                }
-            }
-        }
-
-        /**
-         * 收尾：退订并归还额度，恰好一次。
-         */
-        void finish() {
-            if (!finished.compareAndSet(false, true)) {
-                return;
-            }
-            Subscription current = this.subscription;
-            if (current != null) {
-                current.close();
-            }
-            quota.releaseTurn(userId);
-        }
     }
 }

@@ -32,6 +32,21 @@ class UserQuotaGuardTest {
         return new UserQuotaGuard(properties);
     }
 
+    /**
+     * 构造带指定追踪上限的闸门。
+     *
+     * @param maxTurns        每用户并发回合上限
+     * @param maxSessions     每用户会话数上限
+     * @param maxTrackedUsers 追踪的用户数上限
+     * @return 配额闸门
+     */
+    private static UserQuotaGuard guard(int maxTurns, int maxSessions, int maxTrackedUsers) {
+        JellyfishUserProperties properties = new JellyfishUserProperties();
+        properties.setMaxInflightTurnsPerUser(maxTurns);
+        properties.setMaxSessionsPerUser(maxSessions);
+        return new UserQuotaGuard(properties, maxTrackedUsers);
+    }
+
     @Test
     @DisplayName("额度用尽后占不到，归还之后又能占到")
     void tryAcquireTurn_should_stop_at_limit_and_recover_after_release_when_configured() {
@@ -115,5 +130,40 @@ class UserQuotaGuardTest {
         // Then
         assertTrue(quota.tryAcquireTurn("alice"));
         assertFalse(quota.tryAcquireTurn("alice"), "仍然只有一份额度");
+    }
+
+    @Test
+    @DisplayName("从未占过额度的标识归还时不给自己挣额度")
+    void releaseTurn_should_not_grant_quota_when_nothing_was_acquired() {
+        // Given：一个从未占过额度的标识
+        UserQuotaGuard quota = guard(1, 10);
+
+        // When：凭空归还（正常路径不会这样，但 map 是懒建的，不能让它成为加额度的入口）
+        quota.releaseTurn("never-seen");
+
+        // Then：它不该因此获得额度
+        quota.releaseTurn("never-seen");
+        assertTrue(quota.tryAcquireTurn("never-seen"), "第一次占应当成功");
+        assertFalse(quota.tryAcquireTurn("never-seen"), "仍然只有一份额度，归还没有把它撑大");
+    }
+
+    @Test
+    @DisplayName("追踪上限：标识数达上限后新标识一律占不到额度（fail-closed）")
+    void tryAcquireTurn_should_denyNewUser_when_trackedUsersReachLimit() {
+        // Given：把上限设为 2 并填满（真实上限填不满，用包级重载注入）
+        UserQuotaGuard quota = guard(1, 10, 2);
+        assertTrue(quota.tryAcquireTurn("user-0"));
+        assertTrue(quota.tryAcquireTurn("user-1"));
+
+        // When / Then：已有标识照常占得到（它们的额度互不影响）
+        quota.releaseTurn("user-0");
+        assertTrue(quota.tryAcquireTurn("user-0"), "已追踪的标识不受上限影响");
+
+        // Then：新标识被拒——这是「调用方标识无界」时的兜底，方向必须是 fail-closed
+        assertFalse(quota.tryAcquireTurn("brand-new"), "达到上限后新标识不给额度");
+
+        // Then：被拒的标识不该因为 release 而挣到额度
+        quota.releaseTurn("brand-new");
+        assertFalse(quota.tryAcquireTurn("brand-new"), "归还一个不存在的额度不能凭空造出额度");
     }
 }
