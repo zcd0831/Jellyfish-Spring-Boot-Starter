@@ -7,8 +7,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- `jellyfish.trust-project-config`（缺省 `false`）：是否信任并加载**项目级**配置。
+  服务化运行时没有终端可问，因此这里只给一个显式开关；授予发生在 `bootstrap()` 之前，
+  否则配置已经读完了。用 `classpath:` 把配置指到自己的 `resources` 时**不受此开关约束**
+  ——那是构件的一部分，与全局级同性质。
+
 ### Changed
 
+- **项目级配置默认不加载**（破坏性，跟随内核 0.1.1 的同名变更）：它按进程当前目录读取，
+  能改模型端点与密钥、新增 agent、改落盘目录。若此前依赖 `.jellyfish/*.json`、又没有把路径写成
+  `classpath:`，需要在 `application.yml` 里显式打开 `jellyfish.trust-project-config: true`。
 - Maven 坐标由 `zcd` 改为 `io.github.zcd0831`，版本号 0.1.1，已发布到 Maven Central；依赖的内核
   `io.github.zcd0831:jellyfish-di:0.1.1` 也来自中央仓库，接入方不必再本地 `install` 内核。
 - 显式声明 `url` / `licenses` / `developers` / `scm`：parent 是 `spring-boot-starter-parent`，
