@@ -14,12 +14,14 @@ import java.util.Objects;
 /**
  * 内核的生命周期宿主：把「什么时候起、什么时候停」接到 Spring 的容器生命周期上。
  * <p>
- * <b>它只做三件事，顺序不能变</b>：
+ * <b>它只做四件事，顺序不能变</b>：
  * <ol>
  *     <li>写 {@link RuntimeInfo}——必须早于 {@code bootstrap()}。插件在 {@code start()} 里就会读它做降级决策
  *     （例如「没有审批通道就不要提供需要写权限的工具」），晚一步插件拿到的就是缺省值；</li>
  *     <li>挂载审批与提问通道（各自仅在配置启用时）——同样早于 {@code bootstrap()}，这样 {@code RuntimeInfo} 里那句
  *     「具备审批通道」从第一刻起就是实话；</li>
+ *     <li>按 {@code jellyfish.trust-project-config} 决定项目级配置是否参与装载——也必须早于 {@code bootstrap()}，
+ *     因为配置就是在那里读的，晚一步表态等于没表态；</li>
  *     <li>{@code AgentHarness.bootstrap()}——它内部固定了十二步顺序（事件通道 → 指标 → 运行观测 → 系统命令 →
  *     子代理 → 配置 → 模型 / agent 索引 → 插件配置 → 插件启动 → 模型目录 → 会话恢复）。
  *     <b>本类不重排、也不拆开这些步骤</b>：那份顺序是内核的硬约束，只能有一处说法。</li>
@@ -100,6 +102,11 @@ public class JellyfishLifecycle implements SmartLifecycle {
             // 提问会一直等到超时；因此这个开关与审批一样必须显式打开，见 JellyfishProperties.Ask
             runtime.askChannel().attach();
             LOG.info("已挂载提问通道：ask_user 将等待业务方作答（缺省 120 秒超时后返回「用户没有回答」）");
+        }
+        if (properties.isTrustProjectConfig()) {
+            // 与上面两项同理，必须早于 bootstrap：配置就是在 bootstrap 里装载的
+            runtime.projectConfigTrust().trustEverythingInThisRun();
+            LOG.info("已按 jellyfish.trust-project-config=true 信任项目级配置，它们将参与配置合并");
         }
         try {
             runtime.agentHarness().bootstrap();

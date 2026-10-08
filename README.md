@@ -261,6 +261,7 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 | `jellyfish.agents.global-path` / `project-path` | `~/.jellyfish/agents.json` / `./.jellyfish/agents.json` | agent 配置段的双源路径 |
 | `jellyfish.settings.global-path` / `project-path` | `~/.jellyfish/jellyfish.json` / `./.jellyfish/jellyfish.json` | 运行期设置段的双源路径（插件名单、逐插件配置段、`react` / `permission` / `subAgent`） |
 | `jellyfish.plugins.roots` | `['~/.jellyfish/plugins/']` | 插件扫描目录，顺序即扫描顺序；平铺 jar 与「一插件一子目录 + `plugin.properties`」都支持 |
+| `jellyfish.trust-project-config` | `false` | 是否信任并加载**项目级**配置。缺省不加载：它按进程当前目录读取，能改模型端点与密钥、新增 agent、改落盘目录，因此内容会随「在哪个目录里启动」而变。用 `classpath:` 指到自己的 `resources` 时**不受此开关约束**（那是构件的一部分） |
 | `jellyfish.runtime.interactive` | `false` | 是否有终端，插件据此降级。**外壳种类不可配**，恒为「服务化外壳」（`hasUI=false`） |
 | `jellyfish.approval.enabled` | `false` | 是否挂载审批通道，见上 |
 | `jellyfish.ask.enabled` | `false` | 是否挂载提问通道，见上 |

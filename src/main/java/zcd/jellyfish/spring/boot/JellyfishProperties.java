@@ -49,6 +49,20 @@ public class JellyfishProperties {
     /** 是否启用本 starter：{@code false} 时一个 Bean 都不装配。 */
     private boolean enabled = true;
 
+    /**
+     * 是否信任并加载项目级配置。
+     * <p>
+     * <b>为什么需要这个开关</b>：项目级配置（缺省 {@code ./.jellyfish/*.json}）按进程当前目录读取，
+     * 因此它的内容取决于「在哪个目录里启动」。而它足以改写模型端点与密钥、新增 agent、改落盘目录——
+     * 于是内核默认不加载它，只加载全局级。本属性是接入方的那次显式表态。
+     * <p>
+     * <b>为什么没有交互确认</b>：服务化运行时没有终端可问，因此这里只有一个开关，缺省 {@code false}
+     * （不加载）。需要用它时在 yml 里显式打开。
+     * <p>
+     * 注意它只影响<b>项目级</b>那一侧：全局级（{@code ~/.jellyfish/}）由部署方控制，不受此开关约束。
+     */
+    private boolean trustProjectConfig;
+
     /** 进程名，进 {@link AppConfig}，仅用于展示与日志。 */
     private String processName = AppConfig.DEFAULT_PROCESS_NAME;
 
@@ -95,6 +109,24 @@ public class JellyfishProperties {
      */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    /**
+     * 判断是否信任并加载项目级配置。
+     *
+     * @return 信任项目级配置返回 {@code true}
+     */
+    public boolean isTrustProjectConfig() {
+        return trustProjectConfig;
+    }
+
+    /**
+     * 设置是否信任并加载项目级配置。
+     *
+     * @param trustProjectConfig 信任项目级配置传 {@code true}
+     */
+    public void setTrustProjectConfig(boolean trustProjectConfig) {
+        this.trustProjectConfig = trustProjectConfig;
     }
 
     /**

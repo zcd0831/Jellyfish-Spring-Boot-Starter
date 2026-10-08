@@ -3,6 +3,7 @@ package zcd.jellyfish.spring.boot;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -12,7 +13,10 @@ import zcd.jellyfish.core.AgentHarness;
 import zcd.jellyfish.di.JellyfishRuntime;
 import zcd.jellyfish.infra.ask.AskChannel;
 import zcd.jellyfish.infra.permission.ApprovalChannel;
+import zcd.jellyfish.infra.config.ProjectConfigTrust;
 import zcd.jellyfish.infra.plugin.RuntimeInfoHolder;
+
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,6 +61,10 @@ class JellyfishLifecycleTest {
     @Mock
     private AskChannel askChannel;
 
+    /** 临时目录：信任仓库落在这里，不碰用户真实的 {@code ~/.jellyfish}。 */
+    @TempDir
+    private Path tempDir;
+
     /**
      * 构造被测对象，并把内核门面接上 mock。
      * <p>
@@ -89,6 +97,43 @@ class JellyfishLifecycleTest {
         lenient().when(runtime.approvalChannel()).thenReturn(approvalChannel);
         lenient().when(runtime.askChannel()).thenReturn(askChannel);
         return new JellyfishLifecycle(runtime, properties);
+    }
+
+    @Test
+    @DisplayName("jellyfish.trust-project-config=true 时在 bootstrap 之前授予信任")
+    void start_should_trustProjectConfig_beforeBootstrap_when_propertyEnabled() {
+        // Given：信任裁决用真实现——它是 final 类，本仓库没引 mockito-inline；
+        // 信任仓库落在临时目录里，不碰用户真实的 ~/.jellyfish
+        JellyfishProperties properties = new JellyfishProperties();
+        properties.setTrustProjectConfig(true);
+        ProjectConfigTrust trust = new ProjectConfigTrust(tempDir.resolve("trust.json"));
+        lenient().when(runtime.runtimeInfoHolder()).thenReturn(runtimeInfoHolder);
+        lenient().when(runtime.agentHarness()).thenReturn(agentHarness);
+        lenient().when(runtime.projectConfigTrust()).thenReturn(trust);
+        JellyfishLifecycle lifecycle = new JellyfishLifecycle(runtime, properties);
+
+        // When
+        lifecycle.start();
+
+        // Then：真的授予了，且这一步必须早于 bootstrap——配置就是在 bootstrap 里读的，
+        // 晚一步表态等于没表态
+        assertTrue(trust.isTrustingEverythingInThisRun());
+        InOrder order = inOrder(runtime, agentHarness);
+        order.verify(runtime).projectConfigTrust();
+        order.verify(agentHarness).bootstrap();
+    }
+
+    @Test
+    @DisplayName("缺省不信任项目级配置：连信任门面都不必碰")
+    void start_should_notTrustProjectConfig_when_propertyAbsent() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, true);
+
+        // When
+        lifecycle.start();
+
+        // Then
+        verify(runtime, never()).projectConfigTrust();
     }
 
     @Test
