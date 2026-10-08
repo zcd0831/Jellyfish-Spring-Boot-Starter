@@ -27,6 +27,12 @@ import java.util.Objects;
  *     <b>本类不重排、也不拆开这些步骤</b>：那份顺序是内核的硬约束，只能有一处说法。</li>
  * </ol>
  * <p>
+ * <b>这四步只有一处实现</b>：{@link #bootstrap()}。{@link #start()} 只是「按
+ * {@code jellyfish.lifecycle.bootstrap-on-start} 决定要不要调它」——接入方要自己挑时机
+ * （例如等某个外部依赖就绪再起内核），把那个开关关掉、注入本 Bean 调 {@link #bootstrap()} 就行。
+ * <b>两条路径的关闭路径完全相同</b>：{@link #stop()} 认的是「内核起没起」，不是「谁起的」；
+ * 否则手动起的那条路会漏掉落盘与插件收敛（会话不落盘、插件线程不收敛，而且都在进程退出时才显形）。
+ * <p>
  * <b>phase 的取值是两个方向上的同一件事</b>：{@link #getPhase()} 小于 Web 容器的 phase
  * （Boot 的 {@code WebServerStartStopLifecycle} 用 {@code Integer.MAX_VALUE - 1}）。
  * Spring 启动按 phase 升序、停止按降序，因此这一条同时给出「启动时内核先于 Web 就绪」与
@@ -66,7 +72,12 @@ public class JellyfishLifecycle implements SmartLifecycle {
     /** 配置。 */
     private final JellyfishProperties properties;
 
-    /** 是否已启动：用于 {@link #isRunning()}、{@link #stop()} 的幂等与「没起过就别关」。 */
+    /**
+     * 是否已拉起内核：用于 {@link #isRunning()}、{@link #stop()} 的幂等与「没起过就别关」。
+     * <p>
+     * <b>自动启动与接入方显式 {@link #bootstrap()} 都算</b>：两种方式起了同一个内核，
+     * 收尾自然只能有一次说法——否则「手动起了却关不掉」会漏掉落盘与插件收敛。
+     */
     private volatile boolean running;
 
     /**
@@ -92,7 +103,31 @@ public class JellyfishLifecycle implements SmartLifecycle {
     public void start() {
         if (!properties.getLifecycle().isBootstrapOnStart()) {
             LOG.info("jellyfish.lifecycle.bootstrap-on-start=false，内核保持未启动；"
-                    + "需要时自行调用 AgentHarness.bootstrap()");
+                    + "需要自己挑时机时注入本 Bean 并调用 bootstrap()");
+            return;
+        }
+        bootstrap();
+    }
+
+    /**
+     * 按内核要求的固定顺序拉起内核：写 {@link RuntimeInfo} → 挂审批 → 挂提问 → 按配置决定项目级配置
+     * 是否参与装载 → {@code AgentHarness.bootstrap()}。
+     * <p>
+     * <b>为什么它是 public 的</b>：{@code jellyfish.lifecycle.bootstrap-on-start=false} 的含义是
+     * 「不自动起，由接入方挑时机起」。而内核门面（{@code JellyfishRuntime}）刻意不进容器
+     * （理由见 {@link JellyfishKernel}），接入方拿不到 {@code AgentHarness}——他能注入的「启动内核」入口
+     * 只有本类。因此这个方法是那个开关的另一半：少了它，「自己控时机」就只剩「内核永远不起」这一种解释。
+     * <p>
+     * <b>幂等，且与 {@link #stop()} 互斥</b>：重复调用不会拉起第二遍；两者用同一把锁，
+     * 因此不会出现「一边启动一边关闭」的交错（启动要几秒，被关停截在半途会留下半套资源）。
+     * <p>
+     * <b>失败要先收敛再抛</b>：一个「内核半死、接口照常对外服务」的进程，表现是每个请求都失败，
+     * 而根因早埋在启动日志里。这里尽力收敛已经起来的资源（事件通道、指标订阅、插件运行时可能已经起了），
+     * 再原样抛出——也让本次启动不算数（{@link #isRunning()} 仍为 {@code false}），
+     * 免得容器关闭时又对一套没起的资源收一次尾。
+     */
+    public synchronized void bootstrap() {
+        if (running) {
             return;
         }
         runtime.runtimeInfoHolder().set(runtimeInfo());
@@ -129,7 +164,7 @@ public class JellyfishLifecycle implements SmartLifecycle {
     }
 
     @Override
-    public void stop() {
+    public synchronized void stop() {
         if (!running) {
             return;
         }

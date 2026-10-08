@@ -14,6 +14,7 @@ import zcd.jellyfish.spring.boot.JellyfishProperties;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,10 +66,20 @@ class IdleSessionReaperTest {
         runtime = JellyfishAssembler.create(properties.toAppConfig());
 
         owners = new InMemorySessionOwnerStore();
+        reaper = reaperWith(Duration.ofMillis(1L));
+    }
+
+    /**
+     * 造一个回收器，只改闲置门槛（扫描间隔 1 小时，只有手工调 sweep 才会扫）。
+     *
+     * @param idleTimeout 闲置门槛
+     * @return 被测回收器，保证非 {@code null}
+     */
+    private IdleSessionReaper reaperWith(Duration idleTimeout) {
         JellyfishUserProperties userProperties = new JellyfishUserProperties();
-        userProperties.setIdleTimeout(Duration.ofMillis(1L));
+        userProperties.setIdleTimeout(idleTimeout);
         userProperties.setSweepInterval(Duration.ofHours(1L));
-        reaper = new IdleSessionReaper(runtime.sessionManager(), owners, runtime.turnRegistry(),
+        return new IdleSessionReaper(runtime.sessionManager(), owners, runtime.turnRegistry(),
                 userProperties);
     }
 
@@ -152,6 +163,43 @@ class IdleSessionReaperTest {
         // 内核实现在重复 stop 时也要安全：SmartLifecycle 的调用方（容器）不保证只调一次
         reaper.stop();
         assertFalse(reaper.isRunning());
+    }
+
+    @Test
+    @DisplayName("idle-timeout 配成 0 表示不回收：不关会话、不解绑归属（配置的人以为自己在写「不限」）")
+    void sweep_should_reap_nothing_when_idle_timeout_is_zero() {
+        // Given：门槛 0。折算成一个很小的门槛就会变成「每轮扫描清空所有空闲会话」，
+        // 而客户端看到的只是自己的 sessionId 突然 404
+        IdleSessionReaper disabled = reaperWith(Duration.ZERO);
+        String sessionId = ownedSession("alice");
+        awaitIdleWindow();
+
+        // When
+        int closed = disabled.sweep();
+
+        // Then
+        assertEquals(0, closed);
+        assertTrue(runtime.sessionManager().exists(sessionId), "「不回收」不能变成「把空闲会话全关掉」");
+        assertTrue(owners.owns("alice", sessionId), "归属也不该被解绑");
+    }
+
+    @Test
+    @DisplayName("idle-timeout 配成负数或缺失同样是「不回收」，且回收器根本不启动")
+    void reaper_should_not_start_when_idle_timeout_is_not_positive() {
+        // Given
+        for (Duration configured : Arrays.asList(Duration.ofSeconds(-1L), null)) {
+            IdleSessionReaper disabled = reaperWith(configured);
+            String sessionId = ownedSession("alice");
+            awaitIdleWindow();
+
+            // When
+            disabled.start();
+
+            // Then：连调度线程都不排——它什么都不会做，而空闲线程也是一种占用
+            assertFalse(disabled.isRunning(), "「不回收」时回收器不该在运行：" + configured);
+            assertEquals(0, disabled.sweep(), "手工调 sweep 也一次不关：" + configured);
+            assertTrue(runtime.sessionManager().exists(sessionId), "会话必须留着：" + configured);
+        }
     }
 
     /**

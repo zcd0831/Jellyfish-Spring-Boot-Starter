@@ -76,7 +76,7 @@ jellyfish:
     enabled: false                          # 见下「提问」
 
   lifecycle:
-    bootstrap-on-start: true                # false = 只装配不启动，自己控制时机
+    bootstrap-on-start: true                # false = 只装配不启动；自己挑时机就注入 JellyfishLifecycle 调 bootstrap()
 ```
 
 **内容仍然是内核格式的 JSON**（providers / models / agent 定义 / 插件启用名单 / 逐插件配置段等），
@@ -270,7 +270,7 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 | `jellyfish.runtime.interactive` | `false` | 是否有终端，插件据此降级。**外壳种类不可配**，恒为「服务化外壳」（`hasUI=false`） |
 | `jellyfish.approval.enabled` | `false` | 是否挂载审批通道，见上 |
 | `jellyfish.ask.enabled` | `false` | 是否挂载提问通道，见上 |
-| `jellyfish.lifecycle.bootstrap-on-start` | `true` | `false` = 只装配不启动内核，自己控制时机（测试常用） |
+| `jellyfish.lifecycle.bootstrap-on-start` | `true` | `false` = 只装配不启动内核，由接入方挑时机。**挑时机的方式是注入 `JellyfishLifecycle` 调它的 `bootstrap()`**（注入它需要自己挑时机的那些 Bean）——内核门面不在容器里，没有别的入口。两条路径的关闭动作相同 |
 
 ### 多用户护栏的配置
 
@@ -280,7 +280,7 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 | `jellyfish.user.max-inflight-turns-per-user` | `2` | 每用户并发回合上限，`<= 0` 表示不限 |
 | `jellyfish.user.max-sessions-per-user` | `20` | 每用户会话数上限，`<= 0` 表示不限 |
 | `jellyfish.user.reaper-enabled` | `true` | 是否开启闲置回收 |
-| `jellyfish.user.idle-timeout` | `30m` | 多久没用算「可以回收了」 |
+| `jellyfish.user.idle-timeout` | `30m` | 多久没用算「可以回收了」；`<= 0`（或不配）表示**不回收**，此时回收器不启动，会话表只增不减 |
 | `jellyfish.user.sweep-interval` | `5m` | 扫描间隔（钳到 ≥ 1 秒） |
 | `jellyfish.user.denied-commands` | `[new, resume, delete, rm, session, sessions, reload]` | 命令闸门拦下的命令 |
 | `jellyfish.user.session-required-commands` | `[model, agent, a]` | 这些命令必须有会话才执行 |

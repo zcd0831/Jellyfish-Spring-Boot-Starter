@@ -189,6 +189,36 @@ class JellyfishAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("关掉自动启动时，接入方能自己挑时机：调 bootstrap() 内核才起来，容器关闭后照样收敛")
+    void context_should_start_kernel_when_bootstrap_called_manually() {
+        // Given：本载体缺省就是 bootstrap-on-start=false，即「只装配不启动」
+        AtomicReference<JellyfishLifecycle> lifecycleRef = new AtomicReference<JellyfishLifecycle>();
+        AtomicReference<EventChannel> channelRef = new AtomicReference<EventChannel>();
+
+        // When
+        runner().run(context -> {
+            assertThat(context).hasNotFailed();
+            JellyfishLifecycle lifecycle = context.getBean(JellyfishLifecycle.class);
+            EventChannel channel = context.getBean(JellyfishKernel.class).runtime().eventChannel();
+            assertFalse(lifecycle.isRunning(), "开关关掉时上下文起来也不该启动内核");
+            assertFalse(channel.isRunning(), "前置条件：事件通道还没起");
+
+            // 接入方挑的时机到了（例如某个外部依赖就绪）
+            lifecycle.bootstrap();
+
+            assertTrue(lifecycle.isRunning(), "手工 bootstrap() 之后内核应当在运行");
+            assertTrue(channel.isRunning(), "内核必须真的起来了：事件通道是它的可观测开关之一");
+            lifecycleRef.set(lifecycle);
+            channelRef.set(channel);
+        });
+
+        // Then：容器一关，手工启动的那个内核也得收敛——否则会话不落盘、插件线程不收敛，
+        // 而且两条都在进程退出时才显形
+        assertFalse(lifecycleRef.get().isRunning());
+        assertFalse(channelRef.get().isRunning(), "内核必须真的关掉了：事件通道是它的可观测开关之一");
+    }
+
+    @Test
     @DisplayName("自动启动时内核真的起来了，上下文关闭后真的收敛了")
     void context_should_start_and_shutdown_kernel_when_bootstrap_on_start() {
         // Given

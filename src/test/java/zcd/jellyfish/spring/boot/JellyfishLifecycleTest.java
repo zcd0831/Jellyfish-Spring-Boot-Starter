@@ -374,4 +374,87 @@ class JellyfishLifecycleTest {
         // Then
         verify(agentHarness, times(1)).shutdown();
     }
+
+    @Test
+    @DisplayName("关掉自动启动时，仍可由接入方显式 bootstrap()（否则那个开关只剩下「内核永不起」一种解释）")
+    void bootstrap_should_startKernel_when_calledManually_and_autoStartDisabled() {
+        // Given：只装配不启动
+        JellyfishLifecycle lifecycle = lifecycle(false, false);
+        lifecycle.start();
+
+        // When：接入方在自己挑的时机启动
+        lifecycle.bootstrap();
+
+        // Then：内核真的起了，且运行时信息也写进去了（插件在 start() 里就要读到它）
+        verify(agentHarness).bootstrap();
+        verify(runtimeInfoHolder).set(any(RuntimeInfo.class));
+        assertTrue(lifecycle.isRunning());
+    }
+
+    @Test
+    @DisplayName("手工启动的内核在容器关闭时同样收敛（会话落盘、插件线程不残留）")
+    void stop_should_shutdown_when_kernel_wasBootstrappedManually_and_autoStartDisabled() {
+        // Given：只装配不启动，接入方自己起
+        JellyfishLifecycle lifecycle = lifecycle(true, true, false);
+        lifecycle.start();
+        lifecycle.bootstrap();
+
+        // When：容器关闭
+        lifecycle.stop();
+
+        // Then：与自动启动那条路完全一致——先摘通道、再关内核
+        InOrder order = inOrder(approvalChannel, askChannel, agentHarness);
+        order.verify(approvalChannel).detach();
+        order.verify(askChannel).detach();
+        order.verify(agentHarness).shutdown();
+        assertFalse(lifecycle.isRunning());
+    }
+
+    @Test
+    @DisplayName("显式 bootstrap() 幂等：重复调用不会拉起第二遍")
+    void bootstrap_should_beIdempotent_when_calledTwice() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, false);
+        lifecycle.start();
+
+        // When
+        lifecycle.bootstrap();
+        lifecycle.bootstrap();
+
+        // Then
+        verify(agentHarness, times(1)).bootstrap();
+        verify(runtimeInfoHolder, times(1)).set(any(RuntimeInfo.class));
+    }
+
+    @Test
+    @DisplayName("显式 bootstrap() 失败时与自动启动一样：先收敛已起的资源，再把异常抛出去")
+    void bootstrap_should_convergeAndRethrow_when_manualStartFails() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, false);
+        lifecycle.start();
+        doThrow(new IllegalStateException("插件目录不可读")).when(agentHarness).bootstrap();
+
+        // When
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, lifecycle::bootstrap);
+
+        // Then：收敛了，且本次启动不算数——否则容器关闭时会对一套没起的资源再收一次尾
+        assertEquals("插件目录不可读", thrown.getMessage());
+        verify(agentHarness).shutdown();
+        assertFalse(lifecycle.isRunning());
+    }
+
+    @Test
+    @DisplayName("启动失败后 stop() 不再关一次（本次启动不算数，收敛已经做过）")
+    void stop_should_doNothing_when_bootstrapFailed() {
+        // Given
+        JellyfishLifecycle lifecycle = lifecycle(false, true);
+        doThrow(new IllegalStateException("启动失败")).when(agentHarness).bootstrap();
+        assertThrows(IllegalStateException.class, lifecycle::start);
+
+        // When
+        lifecycle.stop();
+
+        // Then：shutdown 只被调过一次（就是失败路径里那次收敛）
+        verify(agentHarness, times(1)).shutdown();
+    }
 }

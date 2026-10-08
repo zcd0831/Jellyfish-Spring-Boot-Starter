@@ -99,6 +99,11 @@ src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册�
   `Integer.MAX_VALUE - 1024`），跟它减一个魔数会在某次升级 Boot 时静默失效。
 - **不注册 JVM shutdown hook**：Spring 自己会走 `SmartLifecycle.stop()`，再叠一个只会让「谁先关」取决于
   JVM 不保证的 hook 顺序。
+- **接入方自己挑启动时机只有一条入口：`JellyfishLifecycle.bootstrap()`**（`bootstrap-on-start=false` 时它才
+  有意义）。内核门面不在容器里，接入方拿不到 `AgentHarness`——别把这条入口删掉，也别让 `stop()` 只认
+  「自动启动才算起过」：认错了的话，手动起的内核在容器关闭时不落盘、不关插件，两条都在进程退出时才显形。
+- **`jellyfish.user.idle-timeout ≤ 0` 是「不回收」，不能折算成一个很小的门槛**：判据是
+  `updatedAt < now - 门槛`，1 毫秒意味着「每轮扫描关掉所有空闲会话并解绑」，而配的人以为自己写的是「不限」。
 - **`IdleSessionReaper.shouldReap` 必须同时满足「有归属者」与「没有在途回合」**：闲置判据只看时间戳，
   而一次长 LLM 调用在第一条新消息落库前**不刷新这个时间戳**——只看时间会把正在跑的会话关掉。
 - **建会话的锁用固定 64 个散列槽位，不是每用户一把**（后者会随用户数无限增长）。
