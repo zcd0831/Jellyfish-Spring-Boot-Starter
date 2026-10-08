@@ -109,7 +109,11 @@ src/main/resources/META-INF/spring.factories   # Boot 2.7 的自动配置注册�
 - **建会话的锁用固定 64 个散列槽位，不是每用户一把**（后者会随用户数无限增长）。
 - **`JellyfishStarterRegistrationTest` 是 `spring.factories` 的唯一守卫**：其它用例都显式点名加载配置类，
   因此类名写错、漏写、注册失效它们全都照样绿。**改那个文件之后必须跑它。**
-- **`@AutoConfigureAfter` 的必然性未被测试证明**，但**不要删**：靠字母序恰好正确不是契约。
+  同一条理由也适用于 `JellyfishUserAutoConfigurationOrderingTest`（它守两个自动配置类之间的顺序契约）。
+- **`@AutoConfigureAfter` 有测试守着，别删**：`JellyfishUserAutoConfigurationOrderingTest` 反射读这个注解
+  （删掉就红），并用两个探针自动配置类证明它真的会改变处理顺序。**注意**：当前命名下字母序恰好也正确
+  （`…boot.JellyfishAutoConfiguration` 排在 `…boot.user.JellyfishUserAutoConfiguration` 之前），
+  所以「删掉注解」在今天是看不出来的——正因如此才需要那条反射断言。
 
 ## 编码规范
 
