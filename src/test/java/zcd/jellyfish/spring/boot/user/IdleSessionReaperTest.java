@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import zcd.jellyfish.core.ReActResult;
 import zcd.jellyfish.core.ReActTurn;
+import zcd.jellyfish.core.conversation.TurnRegistry;
 import zcd.jellyfish.di.JellyfishAssembler;
 import zcd.jellyfish.di.JellyfishRuntime;
 import zcd.jellyfish.infra.session.Session;
@@ -105,8 +106,10 @@ class IdleSessionReaperTest {
         // Given：一个有归属者的会话，里面有一个「永不结束」的回合
         String sessionId = ownedSession("alice");
         awaitIdleWindow();
-        // 走真的 TurnRegistry，而不是 mock 它：这里要验的正是「回收器确实去问了在途回合表」
-        runtime.turnRegistry().bind(sessionId, new NeverDoneTurn());
+        // 走真的 TurnRegistry，而不是 mock 它：这里要验的正是「回收器确实去问了在途回合表」。
+        // 绑定要带槽位——槽位是「这次登记还算不算数」的唯一依据（见 TurnRegistry.bind）
+        TurnRegistry.Slot slot = runtime.turnRegistry().acquire(sessionId);
+        runtime.turnRegistry().bind(slot, new NeverDoneTurn());
         assertTrue(runtime.turnRegistry().isRunning(sessionId), "前置条件：会话应当在跑");
 
         // When
