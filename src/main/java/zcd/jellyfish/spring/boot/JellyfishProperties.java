@@ -479,6 +479,9 @@ public class JellyfishProperties {
      * （fail-closed，与 {@code -cli} 同语义）；挂上但接入方还没把界面接起来时，调用会**阻塞 react 线程
      * 最多 120 秒**再按拒绝处理。前者让问题当场暴露，后者让工具调用静默挂住两分钟——后者更难排查。
      * 因此接好审批接口之后再打开。
+     * <p>
+     * 这里的 120 秒来自内核配置 {@code permission.approvalTimeoutSeconds}；它写 {@code 0} 表示
+     * <b>永不超时</b>，那时「挂住两分钟」变成「一直挂住」——本开关「必须显式打开」的理由因此更成立。
      *
      * @author zcd
      */
@@ -517,6 +520,9 @@ public class JellyfishProperties {
      * 也不阻塞任何线程（与审批未挂载时的 fail-closed 是两种口径）。挂上而接入方还没把作答接口接起来时，
      * 提问会<b>阻塞 react 线程最多 120 秒</b>再返回「用户没有回答」。因此缺省关闭仍然是更安全的一侧，
      * 接好提问接口之后再打开；打开之前 {@code ask_user} 对模型是可用的，只是问不到人。
+     * <p>
+     * 这 120 秒来自内核配置 {@code ask.timeoutSeconds}；它写 {@code 0} 表示<b>永不超时</b>——
+     * 「还没接好作答接口就打开开关」配上这个值，等于把一条 react 线程一直挂在一次提问上。
      *
      * @author zcd
      */

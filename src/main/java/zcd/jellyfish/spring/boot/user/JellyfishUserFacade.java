@@ -17,7 +17,6 @@ import zcd.jellyfish.infra.command.CommandManager;
 import zcd.jellyfish.infra.permission.ApprovalChannel;
 import zcd.jellyfish.infra.session.Session;
 import zcd.jellyfish.infra.session.SessionManager;
-import zcd.jellyfish.infra.session.SessionSnapshots;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -201,7 +200,7 @@ public class JellyfishUserFacade {
      * @throws SessionAccessDeniedException 不是该会话的归属者时抛出
      */
     public SessionSnapshot snapshot(String userId, String sessionId) {
-        return SessionSnapshots.capture(requireOwned(userId, sessionId));
+        return requireOwned(userId, sessionId).captureSnapshot();
     }
 
     /**

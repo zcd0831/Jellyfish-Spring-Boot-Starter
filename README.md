@@ -219,6 +219,10 @@ public class ChatController {
 - **关闭**时：需要审批的调用**立即**按拒绝处理（fail-closed），问题当场暴露；
 - **打开**时：调用会阻塞 `react` 线程**最多 120 秒**再按拒绝处理。因此**接好审批接口之后再打开**。
 
+> 这里的 120 秒来自内核配置 `jellyfish.json` 的 `permission.approvalTimeoutSeconds`。
+> 该键写 `0` 表示**永不超时**——**多租户进程里尤其不要这么配**：接入方没把裁决接口接起来时，
+> 那条 `react` 线程不会再自愈（`react` 池只有 8 条线程），只有客户端断开后调拒绝才会放开。
+
 打开之后用 `jellyfish.pendingApprovals(userId, sessionId)` 与 `jellyfish.approve(userId, sessionId, requestId, ok)`
 做三件事：读本会话待裁决的那一条、读整条队列、裁决。
 **只有头槽位那一条能被裁决**，对排队中的请求调用 `approve` 等于无事发生（返回 `false`）。
@@ -235,6 +239,9 @@ requestId」去调 `resolve`，内核会照办。
 - **关闭**时：提问**立即**返回一条「当前外壳没有交互界面，无法把提问送达用户」的**成功结果**，
   模型据此自行判断。它既不失败、也不阻塞任何线程（审批关闭时是 fail-closed，两者口径不同）；
 - **打开**时：提问会阻塞 `react` 线程**最多 120 秒**再返回「用户没有回答」。因此**接好作答接口之后再打开**。
+
+> 同样地，这个 120 秒来自 `jellyfish.json` 的 `ask.timeoutSeconds`，写 `0` 表示**永不超时**——
+> 在「还没接好作答接口就打开开关」的场景里那等于把一条 `react` 线程一直挂在一次提问上。
 
 打开之后用 `jellyfish.pendingAsks(userId, sessionId)` 与下面三个方法：
 
@@ -414,6 +421,8 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
   且只有头槽位能被裁决 / 作答，对排队中的那一条调用等于无事发生（返回 `false`）。
 - **两者都会占用 `react` 线程直到被作答或超时**：`react` 池只有 8 条线程（= 并发顶层回合上限），
   因此接入方在客户端断开时应当调 `cancelAsk` / 拒绝待审项，而不是放着等满 120 秒。
+  **若把 `ask.timeoutSeconds` / `permission.approvalTimeoutSeconds` 配成 `0`（永不超时），这条纪律就是唯一的护栏**——
+  那时「等满」不再是终点，只有作答 / 裁决 / 通道关闭（进程退出）能放开那条线程。
 - **绕过门面就是绕过全部护栏**：内核**没有「用户」概念**——`Session` 无 owner 字段、`SessionManager.all()`
   返回全进程会话、插件也不做用户隔离。护栏都在 `user/` 包里，而内核门面**默认不进容器**；
   真要拿到它只能自己 `JellyfishAssembler.create(...)`，那时这些护栏就都在你手上了。
