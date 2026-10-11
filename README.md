@@ -29,7 +29,7 @@
 | --- | --- |
 | JDK | 8 |
 | Spring Boot | 2.7（已在 2.7.18 上验过） |
-| 内核 | `io.github.zcd0831:jellyfish-di:0.1.1`（中央仓库） |
+| 内核 | `io.github.zcd0831:jellyfish-di:0.1.2`（中央仓库） |
 
 **内核已发布到中央仓库**，依赖由 Maven 直接解析。只有在本地改了内核时才需要先把它装进本地仓库：
 
@@ -45,7 +45,7 @@
 <dependency>
     <groupId>io.github.zcd0831</groupId>
     <artifactId>jellyfish-spring-boot-starter</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -434,7 +434,7 @@ mvn test -Djackson-bom.version=2.13.5   # Boot 管理版本
 
 ## 发布到 Maven Central
 
-本 starter 发布在中央仓库，坐标 `io.github.zcd0831:jellyfish-spring-boot-starter:0.1.1`；它依赖的内核
+本 starter 发布在中央仓库，坐标 `io.github.zcd0831:jellyfish-spring-boot-starter:0.1.2`；它依赖的内核
 `io.github.zcd0831:jellyfish-di` 同样来自中央仓库。
 
 ```bash

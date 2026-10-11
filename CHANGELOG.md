@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-11
+
+### Changed
+
+- 版本号对齐到 `0.1.2`：本 starter 与它依赖的内核 `io.github.zcd0831:jellyfish-di` 同步到 `0.1.2`。
+  本版 starter 自身没有面向接入方的行为变更。
+
 ## [0.1.1] - 2026-10-11
 
 ### Added
@@ -87,6 +94,7 @@
 - 配置属性 `jellyfish.lifecycle.bootstrap-on-start`（缺省 `true`）。
 - 越权 / 超配额 / 命令被拒三种专门异常。
 
-[Unreleased]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/releases/tag/v0.1.2
 [0.1.1]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/releases/tag/v0.1.0
