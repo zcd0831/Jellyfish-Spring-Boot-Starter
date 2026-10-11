@@ -54,7 +54,7 @@ public class IdleSessionReaper implements SmartLifecycle {
     private static final Logger LOG = LoggerFactory.getLogger(IdleSessionReaper.class);
 
     /**
-     * 「不回收」的内部标记：来自 {@code idle-timeout ≤ 0}（或缺省）。
+     * 「不回收」的内部标记：来自 {@code idle-timeout ≤ 0}，或程序化配置传入 {@code null}。
      * <p>
      * <b>为什么不能折算成一个很小的门槛</b>：门槛的作用是筛出「很久没人用」的会话，而它的判据是
      * {@code updatedAt < now - 门槛}。门槛取 1 毫秒时这个条件对几乎所有会话都成立，于是每一轮扫描
@@ -114,10 +114,10 @@ public class IdleSessionReaper implements SmartLifecycle {
     /**
      * 把配置里的闲置门槛翻成内部值。
      * <p>
-     * <b>{@code ≤ 0} 或缺省一律是「不回收」</b>，不是「折算成一个很小的门槛」——后者会把
-     * 「以为自己在说不限」的配置变成「每轮扫描清空所有空闲会话」。缺省（{@code null}）走同一条路：
-     * 属性没配过时 Spring 根本不会调 setter，会走到这里的 {@code null} 只可能来自程序化配置，
-     * 而「不知道」不该被解释成一个具体的门槛。
+     * <b>{@code ≤ 0} 一律是「不回收」</b>，不是「折算成一个很小的门槛」——后者会把
+     * 「以为自己在说不限」的配置变成「每轮扫描清空所有空闲会话」。{@code null} 走同一条路：
+     * 配置文件里不配这个键时 Spring 不会调 setter，字段缺省是 {@code 30m}（会回收），
+     * 因此走到这里的 {@code null} 只可能来自程序化配置，而「不知道」不该被解释成一个具体的门槛。
      *
      * @param configured 配置里的闲置时长，可为 {@code null}
      * @return 闲置门槛毫秒数；不回收时为 {@link #REAP_DISABLED}
@@ -145,7 +145,7 @@ public class IdleSessionReaper implements SmartLifecycle {
             // 不排扫描、也不算「在运行」：空闲的调度线程也是一种占用，而它什么都不会做。
             // 这条日志要显眼——「不回收」的代价是会话表只增不减（内核没有 TTL、没有淘汰、没有数量上限），
             // 这是一个需要有人知情的选择，不是默认值。
-            LOG.warn("jellyfish.user.idle-timeout 为 0 或负数（或缺省），按「不回收」处理，回收器不启动；"
+            LOG.warn("jellyfish.user.idle-timeout 为 0 或负数，按「不回收」处理，回收器不启动；"
                     + "会话及其整段消息历史将常驻内存，只增不减");
             return;
         }

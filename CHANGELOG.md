@@ -5,7 +5,9 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.1.1] - 2026-10-10
+## [Unreleased]
+
+## [0.1.1] - 2026-10-11
 
 ### Added
 
@@ -20,10 +22,11 @@
 
 ### Changed
 
-- **内核门面不再注册成 Spring Bean**（破坏性）：`JellyfishRuntime` 与 21 个转发门面（`SessionManager`、
-  `ConversationService`、`ShellStreams`、`TurnRegistry`、`CommandManager`、`ApprovalChannel`、`AskChannel`、
-  `PermissionManager`、`AgentHarness`、`EventChannel`、`RunEventBus`、`ExtensionRegistry`、`InputDirectives`、
-  `ConversationCompactor` 等）都从容器里移除；内核由 `JellyfishKernel` 持有，其访问器是包私有的。
+- **内核门面不再注册成 Spring Bean**（破坏性）：`JellyfishRuntime` 与原先注册的 14 个转发门面
+  （`SessionManager`、`ConversationService`、`ShellStreams`、`TurnRegistry`、`CommandManager`、
+  `ApprovalChannel`、`AskChannel`、`PermissionManager`、`AgentHarness`、`EventChannel`、`RunEventBus`、
+  `ExtensionRegistry`、`InputDirectives`、`ConversationCompactor`）都从容器里移除；
+  内核由 `JellyfishKernel` 持有，其访问器是包私有的。
   理由：它们都是「按 id 操作某个会话」的能力，且都**不校验调用方是谁**——做成 Bean 之后，容器里任何
   Bean 注入进来就能读别人的对话正文、批准别人的工具调用，归属校验只剩一句约定。
   **迁移**：业务侧改用 `JellyfishUserFacade`（带归属校验）；确实需要一份内核句柄的（自写外壳等），
@@ -40,15 +43,16 @@
   `README.md` 与两个开关的 javadoc 已写明这条代价。
 - 跟随内核 0.1.1 的「取快照收成唯一入口」：`JellyfishUserFacade.snapshot` 改用
   `Session.captureSnapshot()`（公共签名与行为不变，仅内部适配）。
-- Maven 坐标由 `zcd` 改为 `io.github.zcd0831`，版本号 0.1.1，已发布到 Maven Central；依赖的内核
-  `io.github.zcd0831:jellyfish-di:0.1.1` 也来自中央仓库，接入方不必再本地 `install` 内核。
+- Maven 坐标由 `zcd` 改为 `io.github.zcd0831`，版本号 0.1.1：本 starter 与它依赖的内核
+  `io.github.zcd0831:jellyfish-di:0.1.1` 随本次发布上传到 Maven Central，本次发布之前接入方仍需
+  先本地 `install` 内核。
 - 显式声明 `url` / `licenses` / `developers` / `scm`：parent 是 `spring-boot-starter-parent`，
   不写就会继承 Spring 的项目主页、Apache 2.0 许可与开发者信息。
 - 新增 `release` profile（`-P release`）承载 source / javadoc / GPG 签名 / Central 发布四个插件。
-- **`jellyfish.user.idle-timeout ≤ 0`（或缺省）现在表示「不回收」**：此前被钳成 1 毫秒，
-  判据 `updatedAt < now - 1ms` 使每轮扫描清空所有空闲会话，客户端手里的 `sessionId` 下次请求即 404。
-  现在不排扫描并打一条显眼的 WARN（会话表只增不减），与 `max-inflight-turns-per-user` /
-  `max-sessions-per-user` 同口径。
+- **`jellyfish.user.idle-timeout ≤ 0` 现在表示「不回收」**（不配这个键仍是缺省的 `30m`，会回收）：
+  此前被钳成 1 毫秒，判据 `updatedAt < now - 1ms` 使每轮扫描清空所有空闲会话，客户端手里的
+  `sessionId` 下次请求即 404。现在不排扫描并打一条显眼的 WARN（会话表只增不减），
+  与 `max-inflight-turns-per-user` / `max-sessions-per-user` 同口径。
 - **`UserQuotaGuard` 的额度信号量表有了上限**（`MAX_TRACKED_USERS = 65536`）：每个出现过的标识原先是
   一条与进程同寿命的记录，现在到上限后**新标识一律占不到额度（fail-closed）并记 WARN**；
   `releaseTurn` 改为「没有记录就不归还」，防止被上限拒过的标识靠归还凭空挣到额度。
@@ -80,7 +84,7 @@
   - `CommandGate`：拒绝会碰进程级状态或别人会话的命令，也拦住命令参数里不受归属校验保护的部分。
   - `IdleSessionReaper`：闲置会话回收（phase 比内核大 1）。
 - 提问通道接入：配置开关 + 门面方法 + 越权网关。
-- 配置属性 `jellyfish.lifecycle.bootstrap-on-start`（缺省 `false`）。
+- 配置属性 `jellyfish.lifecycle.bootstrap-on-start`（缺省 `true`）。
 - 越权 / 超配额 / 命令被拒三种专门异常。
 
 [Unreleased]: https://github.com/zcd0831/Jellyfish-Spring-Boot-Starter/compare/v0.1.1...HEAD

@@ -33,7 +33,8 @@ public class JellyfishUserProperties {
     /**
      * 闲置多久算「可以回收了」。
      * <p>
-     * <b>{@code ≤ 0}（或缺省）表示<b>不回收</b></b>，与同组的 {@link #maxInflightTurnsPerUser} /
+     * <b>{@code ≤ 0} 表示<b>不回收</b></b>（不配这个键时走下面的字段缺省 {@code 30m}，会回收），
+     * 与同组的 {@link #maxInflightTurnsPerUser} /
      * {@link #maxSessionsPerUser} 同一个口径。这一条不能含糊：回收动作是「关闭会话并解绑归属」，
      * 客户端手里的 {@code sessionId} 下一次请求就变成 404；把越界值折算成一个很小的门槛
      * （例如 1 毫秒）等于「每轮扫描关掉所有空闲会话」，而配置的人以为自己在说「不限」。
@@ -132,7 +133,7 @@ public class JellyfishUserProperties {
     /**
      * 获取闲置判定时长。
      *
-     * @return 闲置时长；{@code ≤ 0}（或缺省）表示不回收
+     * @return 闲置时长；{@code ≤ 0} 表示不回收（缺省 {@code 30m}）
      */
     public Duration getIdleTimeout() {
         return idleTimeout;
@@ -141,7 +142,7 @@ public class JellyfishUserProperties {
     /**
      * 设置闲置判定时长。
      *
-     * @param idleTimeout 闲置时长；{@code ≤ 0}（或缺省）表示不回收
+     * @param idleTimeout 闲置时长；{@code ≤ 0} 表示不回收（缺省 {@code 30m}）
      */
     public void setIdleTimeout(Duration idleTimeout) {
         this.idleTimeout = idleTimeout;

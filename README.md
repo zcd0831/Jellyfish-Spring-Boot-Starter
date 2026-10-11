@@ -287,7 +287,7 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 | `jellyfish.user.max-inflight-turns-per-user` | `2` | 每用户并发回合上限，`<= 0` 表示不限 |
 | `jellyfish.user.max-sessions-per-user` | `20` | 每用户会话数上限，`<= 0` 表示不限 |
 | `jellyfish.user.reaper-enabled` | `true` | 是否开启闲置回收 |
-| `jellyfish.user.idle-timeout` | `30m` | 多久没用算「可以回收了」；`<= 0`（或不配）表示**不回收**，此时回收器不启动，会话表只增不减 |
+| `jellyfish.user.idle-timeout` | `30m` | 多久没用算「可以回收了」；`<= 0` 表示**不回收**（不配则是缺省 `30m`，会回收），此时回收器不启动，会话表只增不减 |
 | `jellyfish.user.sweep-interval` | `5m` | 扫描间隔（钳到 ≥ 1 秒） |
 | `jellyfish.user.denied-commands` | `[new, resume, delete, rm, session, sessions, reload]` | 命令闸门拦下的命令 |
 | `jellyfish.user.session-required-commands` | `[model, agent, a]` | 这些命令必须有会话才执行 |
