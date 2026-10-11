@@ -341,7 +341,7 @@ jellyfish.cancelAsk(userId, sessionId, requestId, "客户端断开了");
 ## 多用户护栏（本 starter 的主要价值）
 
 内核是为「**本地单用户、多会话**」设计的，它的 HTTP 外壳也是（默认只绑回环、`GET /sessions`
-返回全量会话）。它**没有「用户」这一维**——`Session` 上没有 owner 字段。下面六件事内核都不做，
+返回全量会话）。它**没有「用户」这一维**——`Session` 上没有 owner 字段。下面七件事内核都不做，
 由本 starter 补齐：
 
 | 护栏 | 内核的缺口 | 本 starter 的做法 |
